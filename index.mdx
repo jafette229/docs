@@ -2,71 +2,98 @@
 title: Welcome
 ---
 
-# Welcome to Flowxi
+# Flowxi Documentation
 
 ## Introduction
 
-Welcome to **Flowxi**, the banking-grade API to build modern fintech products.
-Flowxi lets you onboard users, manage wallets, move money, and stay compliant — with security and localization built-in.
+This documentation describes the **Flowxi backend platform**.
 
-This documentation helps you integrate fast, avoid mistakes, and ship production-ready fintech flows.
+Flowxi is the internal banking and financial infrastructure powering Flowxi products.
+It is designed for **frontend developers**, **internal teams**, and **technical stakeholders**
+to understand, integrate, and operate the system safely in production.
 
-## What you can build with Flowxi
-
-* **User onboarding**  
-  Register users, verify email, enable 2FA, and manage lifecycle.
-* **Wallets & balances**  
-  Provision wallets, track balances, and secure funds.
-* **Payments & transfers**  
-  Move money securely with full auditability.
-* **Compliance-ready flows**  
-  KYC, KYB, and regulatory primitives built-in.
-* **Localized APIs**  
-  Errors, emails, and responses in user language (FR / EN fallback).
+This is **not a public API**.  
+It is a **controlled platform** with strict security, compliance, and localization rules.
 
 ---
 
-## Get started
+## Who this documentation is for
+
+This documentation is intended for:
+
+- **Frontend developers**  
+  Integrating authentication, wallets, payments, and user flows.
+- **Internal teams**  
+  Operating, monitoring, and extending the platform.
+- **Investors & auditors**  
+  Reviewing architecture, security principles, and compliance posture.
+
+---
+
+## What Flowxi provides
+
+Flowxi exposes a structured backend with clear responsibilities:
+
+* **User lifecycle management**  
+  Registration, authentication, 2FA, status, and access control.
+* **Wallet & balance infrastructure**  
+  Secure custody, balance tracking, and transaction history.
+* **Financial operations**  
+  Transfers, movements, and auditable money flows.
+* **Compliance primitives**  
+  KYC, KYB, document handling, and regulatory states.
+* **Localization-first APIs**  
+  Errors, emails, and responses localized per user (FR default, EN fallback).
+
+---
+
+## Documentation structure
 
 <Columns cols={2}>
-  <Card title="Get started" icon="rocket" href="/introduction">
-    Understand the Flowxi platform and core concepts.
+  <Card title="Platform overview" icon="layer-group" href="/introduction">
+    High-level overview of the Flowxi platform and core concepts.
   </Card>
 
-  <Card title="Authentication" icon="lock" href="/auth/overview">
-    Learn how authentication, tokens, and 2FA work.
+  <Card title="Authentication & security" icon="lock" href="/auth/overview">
+    Authentication flows, tokens, 2FA, and security constraints.
   </Card>
 
-  <Card title="API Reference" icon="code" href="/api-reference">
-    Explore all endpoints with request and response schemas.
+  <Card title="API reference" icon="code" href="/api-reference">
+    Complete list of endpoints with request and response schemas.
   </Card>
 
-  <Card title="Errors & Localization" icon="language" href="/errors">
-    How Flowxi handles errors and multilingual responses.
+  <Card title="Errors & localization" icon="language" href="/errors">
+    Error codes, messages, and localization strategy.
   </Card>
 </Columns>
 
-## Core platform components
+---
+
+## Platform components
 
 <Columns cols={2}>
   <Card title="Users" icon="users">
-    Secure user accounts with lifecycle management.
+    User accounts, roles, status, and lifecycle.
   </Card>
 
   <Card title="Wallets" icon="wallet">
-    Custodial wallets with balance tracking.
+    Custodial wallets, balances, and transactions.
   </Card>
 
   <Card title="Compliance" icon="shield-check">
-    KYC and regulatory building blocks.
+    KYC, verification states, and regulatory enforcement.
   </Card>
 
   <Card title="Security" icon="lock">
-    Bank-level security and audit trails.
+    Bank-level security, rate limits, and auditability.
   </Card>
 </Columns>
 
-## Getting help
+---
 
-If you need help or have questions, contact us at  
+## Support & access
+
+This platform is restricted to authorized teams.
+
+For access issues or technical questions, contact:  
 **support@flowxi.app**
