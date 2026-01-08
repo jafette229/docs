@@ -5,5 +5,6 @@
       "group": "Start",
       "pages": ["introduction"]
     }
-  ]
+  ],
+  "homepage": "introduction"
 }
