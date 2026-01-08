@@ -1,0 +1,9 @@
+{
+  "name": "Flowxi Docs",
+  "navigation": [
+    {
+      "group": "Start",
+      "pages": ["introduction"]
+    }
+  ]
+}
