@@ -24,6 +24,7 @@
             "group": "Authentication",
             "pages": [
               "auth/overview",
+              "auth/registration",
               "auth/login",
               "auth/2fa"
             ]
