@@ -1,0 +1,581 @@
+---
+title: Registration
+---
+
+Flowxi registration is designed for **financial-grade safety**, **deterministic state transitions**, and **frontend-safe integration**.
+
+Registration is implemented as a **controlled onboarding flow** (not a single endpoint) that ensures:
+
+- email ownership is verified before password setup
+- user activation is explicit (`pending` → `active`)
+- no secrets (OTP or magic link) can be reused
+- responses are fully localized from the start of the request
+- session tokens are issued **only after activation**
+
+The behavior described here reflects the **production controllers**, DB constraints, and request validation.
+
+---
+
+## Registration strategies
+
+Flowxi supports **two onboarding strategies**, both leading to the same final state.
+
+1) **Magic link registration**  
+2) **Email code (OTP) registration**
+
+Both strategies share:
+
+- user created (or reused) as `status: pending`
+- locale captured as early as possible (`user.locale` is set if empty)
+- notification preferences created automatically
+- account becomes `active` only when password is set
+- token is returned only at the activation step
+
+---
+
+## Common behavior (applies to both strategies)
+
+### Locale resolution
+
+Before any controller logic runs, the locale is resolved and stored as `effective_locale`.
+
+Priority:
+
+1. `X-App-Locale`
+2. `Accept-Language`
+3. `user.locale` (only when authenticated, not typical for register)
+4. fallback `fr`
+
+Controllers explicitly apply it:
+
+- `app()->setLocale($lang)`
+- emails are sent with `Mail::to(...)->locale($lang)`
+- if the user exists and has no locale yet, `user.locale = $lang`
+
+Frontend must always rely on `code`, never on translated `message`.
+
+---
+
+### User creation / reuse rules
+
+When a registration request comes in:
+
+- if the user does not exist:
+  - user is created with:
+    - `email`
+    - `status = pending`
+    - `name = null`
+    - `locale = $lang`
+  - `username` is generated and persisted
+- if the user exists but is not active:
+  - missing `locale` and/or `username` are filled
+- if the user exists and is already `active`:
+  - the flow is blocked with:
+    - `code: EMAIL_ALREADY_USED` (send/register)
+    - or `code: EMAIL_ALREADY_ACTIVE` (resend)
+
+---
+
+### Notification preferences auto-created
+
+During registration, Flowxi ensures a baseline notification config exists:
+
+- `email_enabled: true`
+- `inapp_enabled: true`
+- `push_enabled: false`
+
+---
+
+### Activation is always the same
+
+Regardless of strategy, the activation step does:
+
+- `password = Hash::make(password)`
+- `status = active`
+- `email_verified_at = now()` if empty
+- token creation (`Sanctum::createToken(...)`)
+- returns `access_token`, `token_type`, `user_id`, `account_status`
+
+Activation runs inside DB transactions, with row-level locks to prevent concurrency issues.
+
+---
+
+## Strategy 1: Magic link registration
+
+### Flow summary
+
+1. Client calls **send magic link**
+2. User receives email with link (deep link + open URL)
+3. Client opens `/register/set-password` screen (frontend)
+4. Client calls **set password** with `token + email + password`
+5. Account becomes active and a Bearer token is returned
+
+---
+
+### 1) Send magic link
+
+**Endpoint**
+
+`POST /api/v1/auth/register-email`
+
+**Request**
+
+Required:
+
+- `email` (string, email, max 255)
+
+**Behavior**
+
+- DB transaction + `lockForUpdate()` on the user row (if exists)
+- blocks active accounts:
+
+```json
+{
+  "message": "…",
+  "code": "EMAIL_ALREADY_USED"
+}
+```
+
+* creates or updates `pending` user (locale/username filled if missing)
+* assigns a default avatar if empty (Dicebear URL seeded by user id)
+* invalidates any previous unused magic links (`used_at = now()`)
+* creates a new magic link token:
+
+  * `expires_at = now() + 15 minutes`
+  * `used_at = null`
+* sends localized email containing:
+
+  * `rawUrl` (direct deep link)
+  * `actionUrl` (open redirect URL wrapper)
+
+**Success response (201)**
+
+```json
+{
+  "message": "…",
+  "code": "MAGIC_LINK_SENT",
+  "data": {}
+}
+```
+
+**Failure (mail send) (500)**
+
+```json
+{
+  "message": "…",
+  "code": "MAIL_SEND_FAILED"
+}
+```
+
+---
+
+### 2) Resend magic link
+
+**Endpoint**
+
+`POST /api/v1/register-email/resend`
+
+**Request**
+
+Required:
+
+* `email` (string, email, max 255)
+
+**Behavior**
+
+* DB transaction + `lockForUpdate()` on user
+* if user not found:
+
+```json
+{
+  "message": "…",
+  "code": "USER_NOT_FOUND"
+}
+```
+
+* if already active:
+
+```json
+{
+  "message": "…",
+  "code": "EMAIL_ALREADY_ACTIVE"
+}
+```
+
+* invalidates any previous unused links
+* generates a fresh token (15 min TTL)
+* sends localized magic link email
+
+**Success response (200)**
+
+```json
+{
+  "message": "…",
+  "code": "MAGIC_LINK_RESENT",
+  "data": {}
+}
+```
+
+---
+
+### 3) Set password (activate via magic link)
+
+**Endpoint**
+
+`POST /api/v1/auth/register/set-password`
+
+**Request**
+
+Required:
+
+* `email` (string)
+* `token` (string)
+* `password` (string) — validated by `SetPasswordRequest`
+
+**Behavior (transactional)**
+
+* locks magic link row and validates token:
+
+  * token exists
+  * `used_at IS NULL`
+  * `expires_at > now()`
+* if token invalid/expired/used:
+
+```json
+{
+  "message": "…",
+  "code": "MAGIC_LINK_INVALID"
+}
+```
+
+* locks user row
+* email mismatch returns the **same** `MAGIC_LINK_INVALID` (anti-enumeration)
+* sets password + activates the account
+* marks magic link as used (`used_at = now()`)
+* creates Sanctum token (`register:set-password`)
+
+**Success response (200)**
+
+```json
+{
+  "message": "…",
+  "code": "PASSWORD_SET_SUCCESS",
+  "data": {
+    "access_token": "plain_text_token",
+    "token_type": "Bearer",
+    "user_id": 123,
+    "account_status": "active"
+  }
+}
+```
+
+**Server error (500)**
+
+```json
+{
+  "message": "…",
+  "code": "SERVER_ERROR"
+}
+```
+
+---
+
+## Strategy 2: Email code (OTP) registration
+
+### Flow summary
+
+1. Client calls **send code**
+2. User receives a 6-digit code
+3. Client calls **verify code** (optional but recommended UX step)
+4. Client calls **set password** with `email + code + password`
+5. Account becomes active and a Bearer token is returned
+
+Important: the backend does not store OTP in plain text; it stores a **HMAC hash** using `app.key`.
+
+---
+
+### 1) Send email code (OTP)
+
+**Endpoint**
+
+`POST /api/v1/register-email-code/send`
+
+**Request**
+
+Validated by `SendEmailCodeRequest` (email required, etc).
+
+**Rate limit**
+
+Keyed by `reg:otp:send:{email}:{ip}`  
+Max: **5 attempts / 600s**
+
+On limit exceeded:
+
+```json
+{
+  "message": "…",
+  "code": "RATE_LIMITED"
+}
+```
+
+**Behavior**
+
+* email normalized (lowercase + trim)
+* blocks active accounts:
+
+```json
+{
+  "message": "…",
+  "code": "EMAIL_ALREADY_USED"
+}
+```
+
+* creates or updates `pending` user (fills locale/username if missing)
+* creates notification preferences if missing
+* generates OTP: random 6-digit
+* deletes any previous OTP rows for the email
+* inserts one row into `email_verification_codes`:
+
+  * `code_hash = hash_hmac('sha256', sprintf('%06d', code), app.key)`
+  * `expires_at = now() + 10 minutes`
+
+**Success response (201)**
+
+```json
+{
+  "message": "…",
+  "code": "OTP_SENT",
+  "data": {}
+}
+```
+
+**Failure (mail send) (500)**
+
+```json
+{
+  "message": "…",
+  "code": "MAIL_SEND_FAILED"
+}
+```
+
+---
+
+### 2) Resend OTP
+
+**Endpoint**
+
+`POST /api/v1/register-email-code/resend`
+
+**Rate limit**
+
+Keyed by `reg:otp:resend:{email}:{ip}`  
+Max: **5 attempts / 600s**
+
+**Behavior**
+
+* if user not found:
+
+```json
+{
+  "message": "…",
+  "code": "USER_NOT_FOUND"
+}
+```
+
+* if already active:
+
+```json
+{
+  "message": "…",
+  "code": "EMAIL_ALREADY_ACTIVE"
+}
+```
+
+* regenerates OTP exactly like `/send`
+
+**Success response (200)**
+
+```json
+{
+  "message": "…",
+  "code": "OTP_RESENT",
+  "data": {}
+}
+```
+
+---
+
+### 3) Verify OTP
+
+**Endpoint**
+
+`POST /api/v1/register-email-code/verify`
+
+**Rate limit**
+
+Keyed by `reg:otp:verify:{email}:{ip}`  
+Max: **10 attempts / 900s**
+
+**Request**
+
+Validated by `VerifyEmailCodeRequest`:
+
+* `email`
+* `code` (6 digits; server normalizes to digits only)
+
+**Behavior**
+
+* loads row where:
+
+  * `email = ...`
+  * `expires_at > now()`
+* if missing/expired:
+
+```json
+{
+  "message": "…",
+  "code": "OTP_INVALID",
+  "errors": { ... } // only if validation triggered; otherwise absent
+}
+```
+
+* hashes the provided code and compares via `hash_equals`
+* if mismatch:
+
+```json
+{
+  "message": "…",
+  "code": "OTP_INVALID"
+}
+```
+
+**Success response (200)**
+
+```json
+{
+  "message": "…",
+  "code": "OTP_VALID",
+  "data": { "valid": true }
+}
+```
+
+Note: verification does not activate the account and does not issue a token.
+
+---
+
+### 4) Set password (activate via OTP)
+
+**Endpoint**
+
+`POST /api/v1/register-email-code/set-password`
+
+**Rate limit**
+
+Keyed by `reg:otp:setpwd:{email_prefix}:{ip}` (email prefix is truncated)  
+Max: **20 attempts / 900s**
+
+**Request**
+
+Validated by `SetPasswordFromCodeRequest`:
+
+* `email`
+* `code`
+* `password`
+
+**Behavior (transactional, with locks)**
+
+* locks OTP row (`email_verification_codes`) and validates:
+
+  * not expired
+  * hash matches
+* on failure returns **403** (stronger than verify):
+
+```json
+{
+  "message": "…",
+  "code": "OTP_INVALID"
+}
+```
+
+* locks user row and validates existence (also returns `OTP_INVALID` if missing)
+* sets password + activates (`status = active`, `email_verified_at`)
+* deletes OTP row
+* creates Sanctum token (`register:set-password-from-code`)
+
+**Success response (200)**
+
+```json
+{
+  "message": "…",
+  "code": "PASSWORD_SET_SUCCESS",
+  "data": {
+    "access_token": "plain_text_token",
+    "token_type": "Bearer",
+    "user_id": 123,
+    "account_status": "active"
+  }
+}
+```
+
+**Server error (500)**
+
+```json
+{
+  "message": "…",
+  "code": "SERVER_ERROR"
+}
+```
+
+---
+
+## Security and anti-enumeration notes
+
+### What is intentionally revealed
+
+Registration does reveal some state in specific endpoints:
+
+* `/register-email-code/resend` returns `USER_NOT_FOUND` if the email is not registered as pending
+* magic-link resend does the same
+
+This is acceptable because these endpoints are already rate-limited and are intended to operate on an existing pending registration.
+
+### What is intentionally not leaked
+
+* magic link set-password returns the same `MAGIC_LINK_INVALID` for:
+
+  * invalid token
+  * used token
+  * expired token
+  * email mismatch
+
+This prevents guessing valid tokens or linking them to specific emails.
+
+---
+
+## Frontend integration checklist
+
+* Always send `X-App-Locale` for consistent language + email locale
+* OTP flow:
+
+  * call `/send`
+  * optionally call `/verify` to show “code ok”
+  * call `/set-password` to activate and obtain token
+* magic link flow:
+
+  * call `/auth/register-email`
+  * open frontend route `/register/set-password` with `token + email + lang`
+  * submit `/auth/register/set-password` to activate and obtain token
+* Always branch on `code`, not `message`
+* Handle `RATE_LIMITED (429)` with cooldown UI
+
+---
+
+## Summary
+
+Flowxi registration provides:
+
+* deterministic `pending → active` activation
+* secure OTP hashing (HMAC with app key) and DB-enforced expiration
+* single-use expiring magic links (15 minutes, consumed on success)
+* localized responses and emails aligned per request locale
+* token issuance only at the final activation step
