@@ -1,0 +1,131 @@
+---
+title: Authentication overview
+---
+
+# Authentication overview
+
+Flowxi uses **Laravel Sanctum** personal access tokens (Bearer tokens) to authenticate API requests.
+
+A successful authentication returns:
+
+- `access_token` (string)
+- `token_type` = `Bearer`
+
+All protected routes require:
+
+- `Authorization: Bearer <access_token>`
+
+---
+
+## Localization (all auth endpoints)
+
+Locale is resolved in this order:
+
+1. `X-App-Locale` (preferred)
+2. `Accept-Language`
+3. `user.locale` (authenticated requests)
+4. fallback: `fr`
+
+The effective locale is applied to:
+- API messages (`message`)
+- validation responses
+- emails sent by the backend
+
+---
+
+## Available authentication flows
+
+Flowxi provides **two registration flows**:
+
+- **Magic link registration**
+- **Email code (OTP) registration**
+
+And a standard login flow:
+- **Email + password**
+- optional **2FA challenge** (TOTP)
+
+---
+
+## Registration: Magic link
+
+### 1) Send magic link
+`POST /api/v1/auth/register-email`
+
+Creates a `pending` user if needed, then emails a magic link.
+
+### 2) Resend magic link
+`POST /api/v1/register-email/resend`
+
+Only valid for `pending` users.
+
+### 3) Set password + activate
+`POST /api/v1/auth/register/set-password`
+
+Validates the token (unused + not expired), sets password, marks the account `active`,
+and returns a Sanctum token.
+
+---
+
+## Registration: Email code (OTP)
+
+### 1) Send code
+`POST /api/v1/register-email-code/send`
+
+Generates a 6-digit code and stores only a **hashed version** in DB.
+
+### 2) Verify code
+`POST /api/v1/register-email-code/verify`
+
+Checks the code validity (not expired + hash match).
+
+### 3) Set password + activate
+`POST /api/v1/register-email-code/set-password`
+
+Transaction + row locks, activates the account and returns a Sanctum token.
+
+---
+
+## Login flow
+
+### 1) Login
+`POST /api/v1/auth/login`
+
+Security rules:
+- **anti-enumeration**: unknown email, wrong password, or non-active account all return the same 401 error
+- rate-limited per `email + ip`
+
+If 2FA is enabled:
+- returns `challenge_id`
+- does **not** return a token
+
+If 2FA is not enabled:
+- returns a token
+- enforces **1 token per device_id** (old token for this device is revoked)
+
+### 2) Verify login 2FA (if required)
+`POST /api/v1/auth/2fa/verify-login`
+
+Validates the TOTP code and issues the final token.
+
+---
+
+## Devices & sessions (protected)
+
+Protected endpoints (require Bearer token):
+
+- `POST /api/v1/auth/logout`
+- `POST /api/v1/auth/logout-device`
+- `GET /api/v1/auth/devices`
+
+---
+
+## 2FA management (protected)
+
+Protected endpoints:
+
+- `GET /api/v1/auth/2fa/status`
+- `POST /api/v1/auth/2fa/enable`
+- `POST /api/v1/auth/2fa/disable`
+- `POST /api/v1/auth/2fa/verify`
+
+Enrollment uses a **pending secret stored in cache**, committed to DB only after successful enable.
