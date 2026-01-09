@@ -18,6 +18,10 @@
             "group": "Authentication",
             "pages": ["auth/overview", "auth/registration", "auth/login", "auth/2fa"]
           },
+          {
+            "group": "User",
+            "pages": ["user/me"]
+          },
           { "group": "Errors", "pages": ["errors/index"] },
           { "group": "Localization", "pages": ["localization/index"] }
         ]
