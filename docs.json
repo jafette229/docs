@@ -7,59 +7,34 @@
     "light": "#07C983",
     "dark": "#15803D"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "/public/favicon.svg",
   "navigation": {
     "tabs": [
       {
         "tab": "Get started",
         "groups": [
-          {
-            "group": "Overview",
-            "pages": ["index", "introduction"]
-          },
+          { "group": "Overview", "pages": ["index", "introduction"] },
           {
             "group": "Authentication",
             "pages": ["auth/overview", "auth/registration", "auth/login", "auth/2fa"]
           },
-          {
-            "group": "Errors",
-            "pages": ["errors/index"]
-          },
-          {
-            "group": "Localization",
-            "pages": ["localization/index"]
-          }
+          { "group": "Errors", "pages": ["errors/index"] },
+          { "group": "Localization", "pages": ["localization/index"] }
         ]
       },
       {
         "tab": "API reference",
-        "groups": [
-          {
-            "group": "API",
-            "pages": ["api-reference/introduction"]
-          }
-        ]
+        "groups": [{ "group": "API", "pages": ["api-reference/introduction"] }]
       }
     ]
   },
   "logo": {
-    "light": "/logo/light-2.png",
-    "dark": "/logo/dark-2.png"
+    "light": "/public/logo/light-2.png",
+    "dark": "/public/logo/dark-2.png"
   },
   "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:support@flowxi.app"
-      }
-    ]
+    "links": [{ "label": "Support", "href": "mailto:support@flowxi.app" }]
   },
-  "contextual": {
-    "options": ["copy", "view"]
-  },
-  "footer": {
-    "socials": {
-      "github": "https://github.com/flowxi"
-    }
-  }
+  "contextual": { "options": ["copy", "view"] },
+  "footer": { "socials": { "github": "https://github.com/flowxi" } }
 }
