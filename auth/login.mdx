@@ -1,0 +1,101 @@
+---
+title: Login
+---
+
+# Login
+
+## Endpoint
+
+`POST /api/v1/auth/login`
+
+This endpoint authenticates a user with email + password.
+
+---
+
+## Request
+
+Required fields:
+
+- `email` (string)
+- `password` (string)
+
+Recommended device fields (used for session management):
+
+- `device_id` (string) — required in practice (1 token per device)
+- `device_type` (string) — e.g. `ios`, `android`, `web`
+- `device_name` (string) — user-friendly name
+- `country` (string) — optional
+
+---
+
+## Responses
+
+### Success (no 2FA)
+
+Returns a Bearer token.
+
+Response includes:
+
+- `mfa_required: false`
+- `access_token`
+- `token_type: Bearer`
+- `account_status`
+- `user_id`
+
+---
+
+### 2FA required
+
+If the user has 2FA enabled, login returns a challenge:
+
+- `mfa_required: true`
+- `challenge_id`
+- `otp_type: totp`
+- `expires_in` (seconds)
+
+No token is returned at this stage.
+
+Client must call:
+`POST /api/v1/auth/2fa/verify-login`
+
+---
+
+## Security behavior (important)
+
+### Anti-enumeration (strict)
+
+These cases all return the same 401 error:
+- unknown email
+- wrong password
+- user status not `active`
+
+### Rate limiting
+
+Login is rate-limited per `email + ip` (attempts are counted even if the user does not exist).
+
+### Token issuance policy
+
+When 2FA is not required:
+- Flowxi enforces **1 token per device_id**
+- before issuing a new token, previous tokens with the same `device_id` are deleted
+
+---
+
+## Verify login 2FA (second step)
+
+`POST /api/v1/auth/2fa/verify-login`
+
+Input:
+- `challenge_id`
+- `code` (TOTP)
+
+Challenge validation rules:
+- strict bind to **IP + User-Agent**
+- max 5 attempts
+- hard expiration (no TTL extension)
+
+Success returns:
+- `access_token`
+- `token_type: Bearer`
+- `account_status`
+- `user_id`
