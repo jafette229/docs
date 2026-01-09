@@ -4,197 +4,75 @@ title: Errors
 
 # Errors
 
-Flowxi returns **structured JSON errors** with:
+Flowxi returns **structured, predictable JSON errors** designed for
+**frontend control**, **anti-enumeration**, and **bank-level UX consistency**.
+
+Each error contains:
+
 - a stable machine-readable `code`
-- a human-readable `message` (localized)
-- optional details (`errors`) for validation failures
-
-This page documents the **actual error formats** and how the frontend should handle them.
+- a localized human-readable `message`
+- optional structured details (`errors`)
 
 ---
 
-## Localization of errors
+## Global error format
 
-Error messages are localized using the locale resolution middleware.
-
-Priority order:
-
-1. `X-App-Locale` (preferred)
-2. `Accept-Language`
-3. `user.locale` (authenticated requests)
-4. fallback: `fr`
-
-The selected locale is applied to:
-- `message`
-- validation messages (when applicable)
-- emails and notifications
-
----
-
-## Error response shapes
-
-Flowxi uses two main shapes.
-
-### Standard API error
-
-Most application errors use:
+### Standard error
 
 ```json
 {
   "message": "Human readable message",
-  "code": "SOME_ERROR_CODE"
+  "code": "ERROR_CODE"
 }
 ```
-
-Notes:
-
-- `message` is localized
-- `code` is stable and must be used by the frontend for logic
-
----
 
 ### Validation error (422)
 
-Validation errors return:
-
 ```json
 {
   "message": "Some fields are invalid.",
   "code": "VALIDATION_FAILED",
   "errors": {
-    "field_name": [
-      "Error message 1",
-      "Error message 2"
-    ]
+    "email": ["The email must be a valid email address."]
   }
 }
 ```
 
-Notes:
+---
 
-- `errors` contains field-level messages
-- `message` is a generic localized summary
-- the frontend should display field errors inline when possible
+## Localization
+
+Error messages are localized using the same locale resolution as the rest of the API:
+
+1. `X-App-Locale`
+2. `Accept-Language`
+3. `user.locale`
+4. fallback `fr`
+
+`code` values are **never localized**.
 
 ---
 
-## HTTP status mapping
+## HTTP status semantics
 
-| HTTP status | Code example            | Meaning                                    | Frontend action                            |
-|------------|-------------------------|--------------------------------------------|--------------------------------------------|
-| 422        | `VALIDATION_FAILED`     | Request payload is invalid                 | Show field errors                          |
-| 401        | `UNAUTHENTICATED`       | Missing or invalid token                   | Logout and redirect to login               |
-| 403        | (varies)                | Forbidden or invalid verification          | Show error, stay in flow                   |
-| 404        | (varies)                | Resource not found                         | Show not found state                       |
-| 409        | (varies)                | Conflict (email already used, etc.)        | Show message and propose next step         |
-| 410        | `MFA_CHALLENGE_GONE`    | MFA challenge expired or missing           | Restart login flow                         |
-| 429        | `RATE_LIMITED`          | Too many attempts                          | Disable action temporarily                 |
-| 500        | `SERVER_ERROR`          | Unexpected server failure                  | Show generic error and retry               |
-
----
-
-## Global errors
-
-These errors are handled centrally and can occur on any endpoint.
+| Status | Meaning                       | Frontend action                    |
+|------|-------------------------------|------------------------------------|
+| 422  | Validation failed              | Show inline field errors            |
+| 401  | Unauthenticated                | Clear token, redirect to login      |
+| 403  | Forbidden / invalid code       | Stay in flow, show message          |
+| 404  | Resource not found             | Show not-found state                |
+| 409  | Conflict                       | Suggest next step                   |
+| 410  | MFA challenge expired          | Restart login                       |
+| 429  | Rate limited                   | Disable action, show cooldown       |
+| 500  | Server error                   | Show generic retry UI               |
 
 ---
 
-### Validation failed
-
-**Status:** `422`  
-**Code:** `VALIDATION_FAILED`
-
-```json
-{
-  "message": "Some fields are invalid.",
-  "code": "VALIDATION_FAILED",
-  "errors": {
-    "email": [
-      "The email must be a valid email address."
-    ]
-  }
-}
-```
-
-Frontend guidance:
-
-- Render `errors.<field>` next to the related input
-- Avoid duplicate global toasts
-
----
-
-### Unauthenticated
-
-**Status:** `401`  
-**Code:** `UNAUTHENTICATED`
-
-```json
-{
-  "message": "Unauthenticated.",
-  "code": "UNAUTHENTICATED"
-}
-```
-
-Frontend guidance:
-
-- Clear stored token
-- Redirect to login
-- Restart onboarding flows if needed
-
----
-
-### Rate limited
-
-**Status:** `429`  
-**Code:** `RATE_LIMITED`
-
-```json
-{
-  "message": "Too many attempts. Try again later.",
-  "code": "RATE_LIMITED"
-}
-```
-
-Frontend guidance:
-
-- Disable the action temporarily
-- Show cooldown feedback
-- Do not auto-retry
-
----
-
-### Server error
-
-**Status:** `500`  
-**Code:** `SERVER_ERROR`
-
-```json
-{
-  "message": "Something went wrong. Try again later.",
-  "code": "SERVER_ERROR"
-}
-```
-
-Frontend guidance:
-
-- Show generic error UI
-- Provide a retry action
-- Log client-side context if available
-
----
-
-## Authentication errors
-
-Authentication endpoints return domain-specific error codes.
-
----
+## Authentication errors (anti-enumeration)
 
 ### Invalid credentials
 
-**Status:** `401`  
-**Code:** `INVALID_CREDENTIALS`
-
-Returned for all of the following:
+Returned for:
 - unknown email
 - wrong password
 - non-active account
@@ -206,205 +84,45 @@ Returned for all of the following:
 }
 ```
 
-Frontend guidance:
-
-- Do not indicate which field is incorrect
-- Preserve anti-enumeration guarantees
+Frontend must **never infer which condition failed**.
 
 ---
 
-### MFA required
+## MFA-specific errors
 
-**Status:** `200`  
-**Code:** `MFA_REQUIRED`
-
-```json
-{
-  "message": "Two-factor verification required.",
-  "code": "MFA_REQUIRED",
-  "data": {
-    "mfa_required": true,
-    "challenge_id": "uuid",
-    "otp_type": "totp",
-    "expires_in": 300
-  }
-}
-```
-
-Frontend guidance:
-
-- Navigate to the 2FA screen
-- Store `challenge_id` in memory only
-- Respect expiration
-
----
-
-### MFA challenge expired
-
-**Status:** `410`  
-**Code:** `MFA_CHALLENGE_GONE`
-
-```json
-{
-  "message": "Challenge expired or not found.",
-  "code": "MFA_CHALLENGE_GONE"
-}
-```
-
-Frontend guidance:
-
-- Restart the login flow
-- Do not retry verification
-
----
-
-### MFA challenge invalid
-
-**Status:** `400`  
-**Code:** `MFA_CHALLENGE_INVALID`
-
-Frontend guidance:
-
-- Restart login completely
-
----
-
-### MFA code invalid
-
-**Status:** `403`  
-**Code:** `MFA_CODE_INVALID`
-
-Frontend guidance:
-
-- Stay on 2FA screen
-- Allow retry until rate limited
-
----
-
-### MFA too many attempts
-
-**Status:** `429`  
-**Code:** `MFA_TOO_MANY_ATTEMPTS`
-
-Frontend guidance:
-
-- Lock 2FA input temporarily
-- Offer “Back to login”
+| Code                    | Meaning                          |
+|-------------------------|----------------------------------|
+| `MFA_REQUIRED`          | 2FA challenge required           |
+| `MFA_CHALLENGE_GONE`    | Challenge expired or missing     |
+| `MFA_CHALLENGE_INVALID` | Challenge binding mismatch       |
+| `MFA_CODE_INVALID`      | Wrong TOTP code                  |
+| `MFA_TOO_MANY_ATTEMPTS` | Brute-force protection triggered |
 
 ---
 
 ## Registration errors
 
----
-
-### Email already used
-
-**Status:** `409`  
-**Code:** `EMAIL_ALREADY_USED`
-
-```json
-{
-  "message": "Email already used.",
-  "code": "EMAIL_ALREADY_USED"
-}
-```
-
-Frontend guidance:
-
-- Suggest login instead of registration
-
----
-
-### Email already active
-
-**Status:** `409`  
-**Code:** `EMAIL_ALREADY_ACTIVE`
-
-Frontend guidance:
-
-- Redirect to login
-- Stop resend loop
-
----
-
-### User not found
-
-**Status:** `404`  
-**Code:** `USER_NOT_FOUND`
-
-Frontend guidance:
-
-- Restart flow
-- Do not expose internal details
-
----
-
-### OTP invalid or expired
-
-**Status:** `422` or `403`  
-**Code:** `OTP_INVALID`
-
-Frontend guidance:
-
-- Show generic invalid/expired message
-- Offer resend option
-
----
-
-## 2FA management errors
-
----
-
-### Missing enrollment secret
-
-**Status:** `422`  
-**Code:** `TWOFA_MISSING_SECRET`
-
-Frontend guidance:
-
-- Call `/auth/2fa/status` again
-- Restart enrollment UI
-
----
-
-### Invalid 2FA code
-
-**Status:** `403`  
-**Code:** `TWOFA_INVALID_CODE`
-
-Frontend guidance:
-
-- Allow retry
-- Respect rate limits
-
----
-
-### Already enabled / not enabled
-
-**Status:** `422`  
-
-Codes:
-- `TWOFA_ALREADY_ENABLED`
-- `TWOFA_NOT_ENABLED`
-
-Frontend guidance:
-
-- Sync UI from `/auth/2fa/status`
+| Code                    | Meaning                    |
+|-------------------------|----------------------------|
+| `EMAIL_ALREADY_USED`    | Email already active       |
+| `EMAIL_ALREADY_ACTIVE`  | Account already activated  |
+| `USER_NOT_FOUND`        | No user for resend flow    |
+| `OTP_INVALID`           | Invalid or expired code    |
 
 ---
 
 ## Frontend best practices
 
-- Use `code` for logic and routing
-- Use `message` for display only
-- Treat rate limits as product constraints
-- Never reveal whether an email exists
+- Always branch on `code`
+- Treat `429` as UX requirement, not error
+- Never display raw backend stack info
+- Never leak account existence
 
 ---
 
 ## Testing checklist
 
-- Test `X-App-Locale: fr` and `X-App-Locale: en`
-- Trigger validation errors and check `errors` object
-- Verify login anti-enumeration behavior
-- Test login with 2FA enabled
+- Verify same response for wrong email vs wrong password
+- Trigger validation errors and check `errors`
+- Trigger rate limits and ensure UI cooldown
+- Test MFA expiration paths
