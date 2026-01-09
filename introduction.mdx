@@ -2,6 +2,73 @@
 title: Introduction
 ---
 
-# Flowxi
+# Platform Introduction
 
-Bienvenue sur la documentation Flowxi.
+This page introduces the **Flowxi backend platform** from a technical and architectural perspective.
+
+Flowxi is a **private, internal backend** designed to power Flowxi products.
+It exposes a set of controlled APIs used by frontend applications and internal systems.
+
+This documentation focuses on **how the platform is structured**, not on marketing or sales.
+
+---
+
+## Scope of the platform
+
+Flowxi is responsible for:
+
+- User identity and access control
+- Secure authentication and session management
+- Wallet and balance infrastructure
+- Financial operations and transfers
+- Compliance and verification workflows
+- Localization of all user-facing responses
+
+Anything outside this scope is handled by external systems or frontend applications.
+
+---
+
+## Core design principles
+
+Flowxi follows a small set of strict principles:
+
+- **Security first**  
+  Every action is authenticated, authorized, and audited.
+- **API-first**  
+  All features are exposed through versioned HTTP APIs.
+- **State-driven logic**  
+  Users, wallets, and compliance rely on explicit states.
+- **Deterministic behavior**  
+  Same input, same output. No hidden side effects.
+- **Localization by default**  
+  Errors and messages are returned in the user language  
+  (FR by default, EN fallback).
+
+---
+
+## High-level architecture
+
+At a high level, the platform is composed of the following layers:
+
+1. **Authentication & access control**  
+   Tokens, sessions, 2FA, rate limiting.
+2. **User & identity management**  
+   User lifecycle, roles, and statuses.
+3. **Wallet & financial core**  
+   Balances, transactions, and movements.
+4. **Compliance layer**  
+   KYC, document validation, regulatory states.
+5. **Communication & localization**  
+   Emails, notifications, and translated responses.
+
+Each layer is documented in its own section.
+
+---
+
+## How to navigate this documentation
+
+- Start with **Authentication & security** to understand access rules
+- Use **API reference** for endpoint-level details
+- Refer to **Errors & localization** to handle failures correctly
+
+This documentation assumes familiarity with REST APIs and frontend-backend integration.
