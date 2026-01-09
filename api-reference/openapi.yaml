@@ -1,0 +1,463 @@
+openapi: 3.0.3
+info:
+  title: 'Flowxi API Documentation'
+  description: ''
+  version: 1.0.0
+servers:
+  -
+    url: 'https://api.flowxi.app'
+tags:
+  -
+    name: Endpoints
+    description: ''
+paths:
+  /api/v1/health:
+    get:
+      summary: ''
+      operationId: getApiV1Health
+      description: ''
+      parameters: []
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  status: ok
+                  ts: '2026-01-09T10:26:05.213928Z'
+                  app_locale: en
+                  effective_locale: en
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  ts:
+                    type: string
+                    example: '2026-01-09T10:26:05.213928Z'
+                  app_locale:
+                    type: string
+                    example: en
+                  effective_locale:
+                    type: string
+                    example: en
+      tags:
+        - Endpoints
+      security: []
+  /api/v1/auth/register-email:
+    post:
+      summary: ''
+      operationId: postApiV1AuthRegisterEmail
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  description: 'Must be a valid email address. Must not be greater than 255 characters.'
+                  example: gbailey@example.net
+              required:
+                - email
+      security: []
+  /api/v1/auth/register/set-password:
+    post:
+      summary: ''
+      operationId: postApiV1AuthRegisterSetPassword
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+                  description: 'Must be 64 characters.'
+                  example: bngzmiyvdljnikhwaykcmyuwpwlvqwrsitcpscqldzsnrwtujwvlxjklqppwqbew
+                email:
+                  type: string
+                  description: 'Must be a valid email address. Must not be greater than 255 characters.'
+                  example: cynthia.fahey@example.net
+                password:
+                  type: string
+                  description: ''
+                  example: '|]|{+-'
+              required:
+                - token
+                - email
+                - password
+      security: []
+  /api/v1/register-email/resend:
+    post:
+      summary: ''
+      operationId: postApiV1RegisterEmailResend
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  description: 'Must be a valid email address. Must not be greater than 255 characters.'
+                  example: gbailey@example.net
+              required:
+                - email
+      security: []
+  /api/v1/register-email-code/send:
+    post:
+      summary: ''
+      operationId: postApiV1RegisterEmailCodeSend
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  description: 'Must be a valid email address. Must not be greater than 255 characters.'
+                  example: gbailey@example.net
+              required:
+                - email
+      security: []
+  /api/v1/register-email-code/resend:
+    post:
+      summary: ''
+      operationId: postApiV1RegisterEmailCodeResend
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  description: 'Must be a valid email address. Must not be greater than 255 characters.'
+                  example: gbailey@example.net
+              required:
+                - email
+      security: []
+  /api/v1/register-email-code/verify:
+    post:
+      summary: ''
+      operationId: postApiV1RegisterEmailCodeVerify
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  description: 'Must be a valid email address. Must not be greater than 255 characters.'
+                  example: gbailey@example.net
+                code:
+                  type: string
+                  description: 'Must be 6 characters.'
+                  example: miyvdl
+              required:
+                - email
+                - code
+      security: []
+  /api/v1/register-email-code/set-password:
+    post:
+      summary: ''
+      operationId: postApiV1RegisterEmailCodeSetPassword
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  description: 'Must be a valid email address. Must not be greater than 255 characters.'
+                  example: gbailey@example.net
+                code:
+                  type: string
+                  description: 'Must be 6 characters.'
+                  example: miyvdl
+                password:
+                  type: string
+                  description: ''
+                  example: '|]|{+-'
+              required:
+                - email
+                - code
+                - password
+      security: []
+  /api/v1/auth/login:
+    post:
+      summary: "POST /api/v1/auth/login\n- Anti-enum strict: email inconnu, password KO, compte non actif => INVALID_CREDENTIALS (401)\n- 2FA: retourne un challenge (pas de token)\n- Sans 2FA: émet un token (1 token / device_id)"
+      operationId: pOSTapiv1authloginAntiEnumStrictEmailInconnuPasswordKOCompteNonActifINVALIDCREDENTIALS4012FARetourneUnChallengepasDeTokenSans2FAmetUnToken1TokenDeviceId
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  description: 'Must be a valid email address. Must not be greater than 255 characters.'
+                  example: gbailey@example.net
+                password:
+                  type: string
+                  description: 'Must be at least 1 character. Must not be greater than 255 characters.'
+                  example: '+-0pBNvYgxwmi/#iw'
+                device_type:
+                  type: string
+                  description: 'Must not be greater than 50 characters.'
+                  example: u
+                device_name:
+                  type: string
+                  description: 'Must not be greater than 80 characters.'
+                  example: w
+                device_id:
+                  type: string
+                  description: 'Must not be greater than 100 characters.'
+                  example: p
+                country:
+                  type: string
+                  description: 'Must not be greater than 100 characters.'
+                  example: w
+                  nullable: true
+              required:
+                - email
+                - password
+                - device_type
+                - device_name
+                - device_id
+      security: []
+  /api/v1/auth/2fa/verify-login:
+    post:
+      summary: "POST /api/v1/auth/2fa/verify-login\nÉtape 2: valider TOTP puis émettre token (et enforce 1 token/device)."
+      operationId: pOSTapiv1auth2faverifyLogintape2ValiderTOTPPuismettreTokenetEnforce1Tokendevice
+      description: "- Anti-bruteforce: 5 tentatives max/challenge\n- Challenge bindé: UA + IP (strict) + device_id (issu du challenge)\n- TTL non prolongeable (on conserve TTL restant)\n- IMPORTANT: ne révoque PAS toutes les sessions (UX banking pragmatique)"
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                challenge_id:
+                  type: string
+                  description: 'Must be a valid UUID.'
+                  example: 6ff8f7f6-1eb3-3525-be4a-3932c805afed
+                code:
+                  type: string
+                  description: 'Must be between 4 and 10 digits.'
+                  example: '1374491716'
+              required:
+                - challenge_id
+                - code
+      security: []
+  /api/v1/auth/logout:
+    post:
+      summary: "POST /api/v1/auth/logout\nSupprime le token courant."
+      operationId: pOSTapiv1authlogoutSupprimeLeTokenCourant
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      security: []
+  /api/v1/auth/logout-device:
+    post:
+      summary: "POST /api/v1/auth/logout-device\nDéconnecte un device_id spécifique."
+      operationId: pOSTapiv1authlogoutDeviceDconnecteUnDeviceIdSpcifique
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                device_id:
+                  type: string
+                  description: 'Must not be greater than 100 characters.'
+                  example: b
+              required:
+                - device_id
+      security: []
+  /api/v1/auth/devices:
+    get:
+      summary: "GET /api/v1/auth/devices\n- Filtre les tokens \"legacy\" (device_id null)"
+      operationId: gETapiv1authdevicesFiltreLesTokenslegacydeviceIdNull
+      description: ''
+      parameters: []
+      responses:
+        401:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: Unauthenticated.
+                  code: UNAUTHENTICATED
+                properties:
+                  message:
+                    type: string
+                    example: Unauthenticated.
+                  code:
+                    type: string
+                    example: UNAUTHENTICATED
+      tags:
+        - Endpoints
+      security: []
+  /api/v1/auth/2fa/status:
+    get:
+      summary: 'GET /api/v1/auth/2fa/status'
+      operationId: gETapiv1auth2fastatus
+      description: "Règles “prod/banking” (selon ton choix) :\n- Si 2FA activée : ne renvoie JAMAIS secret ni otpauth_uri\n- Si 2FA désactivée : renvoie secret + otpauth_uri (front peut afficher clé + QR)\n\nEnrôlement :\n- Le secret d'enrôlement est \"pending\" en cache (pas en DB)\n- Commit en DB uniquement après /enable validé"
+      parameters: []
+      responses:
+        401:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: Unauthenticated.
+                  code: UNAUTHENTICATED
+                properties:
+                  message:
+                    type: string
+                    example: Unauthenticated.
+                  code:
+                    type: string
+                    example: UNAUTHENTICATED
+      tags:
+        - Endpoints
+      security: []
+  /api/v1/auth/2fa/enable:
+    post:
+      summary: "POST /api/v1/auth/2fa/enable\nBody: { \"code\": \"123456\" }"
+      operationId: pOSTapiv1auth2faenableBodycode123456
+      description: "- Vérifie le code contre le secret pending (cache)\n- Si OK : commit le secret en DB + active 2FA\n- Ne force PAS logout"
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code:
+                  type: string
+                  description: 'Must be at least 4 characters. Must not be greater than 10 characters.'
+                  example: bngzmi
+              required:
+                - code
+      security: []
+  /api/v1/auth/2fa/disable:
+    post:
+      summary: "POST /api/v1/auth/2fa/disable\nBody: { \"code\": \"123456\" }"
+      operationId: pOSTapiv1auth2fadisableBodycode123456
+      description: "- Vérifie le code TOTP (secret en DB, car 2FA active)\n- Désactive + reset secret (force nouvel enrôlement)\n- Ne force PAS logout"
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code:
+                  type: string
+                  description: 'Must be at least 4 characters. Must not be greater than 10 characters.'
+                  example: bngzmi
+              required:
+                - code
+      security: []
+  /api/v1/auth/2fa/verify:
+    post:
+      summary: "POST /api/v1/auth/2fa/verify\nBody: { \"code\": \"123456\" }"
+      operationId: pOSTapiv1auth2faverifyBodycode123456
+      description: "Endpoint “step-up” : prouver 2FA pour action sensible.\nNe délivre pas de token."
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code:
+                  type: string
+                  description: 'Must be at least 4 characters. Must not be greater than 10 characters.'
+                  example: bngzmi
+              required:
+                - code
+      security: []
