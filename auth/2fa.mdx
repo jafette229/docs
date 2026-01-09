@@ -1,0 +1,89 @@
+---
+title: Two-factor authentication
+---
+
+# Two-factor authentication (2FA)
+
+Flowxi supports **TOTP** (Google Authenticator, Authy, etc.).
+
+2FA is managed through protected endpoints (Bearer token required).
+
+---
+
+## Status & enrollment
+
+### Get status
+
+`GET /api/v1/auth/2fa/status`
+
+If 2FA is enabled:
+- returns `enabled: true`
+- does **not** return secret nor otpauth URI
+
+If 2FA is disabled:
+- generates a **pending enrollment secret** in cache
+- returns:
+  - `secret`
+  - `otpauth_uri`
+  - `expires_in`
+
+The pending secret is committed to the database only after `enable` succeeds.
+
+---
+
+## Enable 2FA
+
+`POST /api/v1/auth/2fa/enable`
+
+Body:
+- `code` (string)
+
+Rules:
+- rate-limited
+- verifies `code` against the **pending secret**
+- on success:
+  - stores `twofa_secret` in DB
+  - sets `twofa_enabled = true`
+  - clears pending secret from cache
+
+---
+
+## Disable 2FA
+
+`POST /api/v1/auth/2fa/disable`
+
+Body:
+- `code` (string)
+
+Rules:
+- rate-limited
+- verifies `code` against secret stored in DB
+- on success:
+  - sets `twofa_enabled = false`
+  - clears `twofa_secret`
+
+---
+
+## Step-up verification
+
+`POST /api/v1/auth/2fa/verify`
+
+Body:
+- `code` (string)
+
+This endpoint is used to prove 2FA for sensitive operations.
+It does not issue a token.
+
+On success:
+- returns `success: true`
+- updates `twofa_last_verified_at` (if available)
+
+---
+
+## Login with 2FA enabled
+
+When 2FA is enabled for a user:
+
+1) `POST /api/v1/auth/login` returns a `challenge_id` (no token)  
+2) client calls `POST /api/v1/auth/2fa/verify-login`  
+3) token is returned only after TOTP verification
