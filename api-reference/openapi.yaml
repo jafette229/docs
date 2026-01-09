@@ -1,32 +1,40 @@
 openapi: 3.0.3
 info:
-  title: 'Flowxi API Documentation'
-  description: ''
+  title: Flowxi API Documentation
   version: 1.0.0
 servers:
-  -
-    url: 'https://api.flowxi.app'
+  - url: https://api.flowxi.app
+
 tags:
-  -
-    name: Endpoints
-    description: ''
+  - name: Health
+    description: Service healthcheck.
+  - name: Registration
+    description: Registration flows (magic link + email OTP).
+  - name: Auth
+    description: Login and session management.
+  - name: Two-factor authentication
+    description: TOTP 2FA endpoints (login verification + manage 2FA).
+  - name: Devices
+    description: Session/device listing and revocation.
+
 paths:
   /api/v1/health:
     get:
-      summary: ''
+      tags: [Health]
       operationId: getApiV1Health
-      description: ''
-      parameters: []
+      summary: Health
+      description: Healthcheck endpoint.
+      security: []
       responses:
-        200:
-          description: ''
+        "200":
+          description: OK
           content:
             application/json:
               schema:
                 type: object
                 example:
                   status: ok
-                  ts: '2026-01-09T10:26:05.213928Z'
+                  ts: "2026-01-09T10:26:05.213928Z"
                   app_locale: en
                   effective_locale: en
                 properties:
@@ -35,320 +43,388 @@ paths:
                     example: ok
                   ts:
                     type: string
-                    example: '2026-01-09T10:26:05.213928Z'
+                    example: "2026-01-09T10:26:05.213928Z"
                   app_locale:
                     type: string
                     example: en
                   effective_locale:
                     type: string
                     example: en
-      tags:
-        - Endpoints
-      security: []
+
   /api/v1/auth/register-email:
     post:
-      summary: ''
+      tags: [Registration]
       operationId: postApiV1AuthRegisterEmail
-      description: ''
-      parameters: []
-      responses: {  }
-      tags:
-        - Endpoints
+      summary: Register (magic link) - send link
+      description: Creates (or reuses) a pending user and sends a single-use magic link email.
+      security: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              required: [email]
               properties:
                 email:
                   type: string
-                  description: 'Must be a valid email address. Must not be greater than 255 characters.'
+                  format: email
+                  description: Must be a valid email address. Max 255.
                   example: gbailey@example.net
-              required:
-                - email
-      security: []
+      responses:
+        "201":
+          description: Magic link sent.
+        "409":
+          description: Email already used (active account).
+        "429":
+          description: Rate limited.
+        "500":
+          description: Mail send failed / server error.
+
   /api/v1/auth/register/set-password:
     post:
-      summary: ''
+      tags: [Registration]
       operationId: postApiV1AuthRegisterSetPassword
-      description: ''
-      parameters: []
-      responses: {  }
-      tags:
-        - Endpoints
+      summary: Register (magic link) - set password
+      description: Validates magic link token, sets password, activates account, and issues a token.
+      security: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              required: [token, email, password]
               properties:
                 token:
                   type: string
-                  description: 'Must be 64 characters.'
+                  description: Magic link token (64 chars).
                   example: bngzmiyvdljnikhwaykcmyuwpwlvqwrsitcpscqldzsnrwtujwvlxjklqppwqbew
                 email:
                   type: string
-                  description: 'Must be a valid email address. Must not be greater than 255 characters.'
+                  format: email
+                  description: Must be a valid email address. Max 255.
                   example: cynthia.fahey@example.net
                 password:
                   type: string
-                  description: ''
-                  example: '|]|{+-'
-              required:
-                - token
-                - email
-                - password
-      security: []
+                  description: User password.
+                  example: "Str0ngP@ssw0rd!"
+      responses:
+        "200":
+          description: Account activated + token issued.
+        "403":
+          description: Invalid/expired/used magic link (anti-enumeration safe).
+        "404":
+          description: User not found.
+        "429":
+          description: Rate limited.
+        "500":
+          description: Server error.
+
   /api/v1/register-email/resend:
     post:
-      summary: ''
+      tags: [Registration]
       operationId: postApiV1RegisterEmailResend
-      description: ''
-      parameters: []
-      responses: {  }
-      tags:
-        - Endpoints
+      summary: Register (magic link) - resend link
+      description: Resends a magic link for a pending user. Active users get 409.
+      security: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              required: [email]
               properties:
                 email:
                   type: string
-                  description: 'Must be a valid email address. Must not be greater than 255 characters.'
+                  format: email
+                  description: Must be a valid email address. Max 255.
                   example: gbailey@example.net
-              required:
-                - email
-      security: []
+      responses:
+        "200":
+          description: Magic link resent.
+        "404":
+          description: User not found.
+        "409":
+          description: Email already active.
+        "429":
+          description: Rate limited.
+        "500":
+          description: Mail send failed / server error.
+
   /api/v1/register-email-code/send:
     post:
-      summary: ''
+      tags: [Registration]
       operationId: postApiV1RegisterEmailCodeSend
-      description: ''
-      parameters: []
-      responses: {  }
-      tags:
-        - Endpoints
+      summary: Register (email OTP) - send code
+      description: Creates (or reuses) a pending user and sends a 6-digit OTP by email.
+      security: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              required: [email]
               properties:
                 email:
                   type: string
-                  description: 'Must be a valid email address. Must not be greater than 255 characters.'
+                  format: email
+                  description: Must be a valid email address. Max 255.
                   example: gbailey@example.net
-              required:
-                - email
-      security: []
+      responses:
+        "201":
+          description: OTP sent.
+        "409":
+          description: Email already used (active account).
+        "429":
+          description: Rate limited.
+        "500":
+          description: Mail send failed / server error.
+
   /api/v1/register-email-code/resend:
     post:
-      summary: ''
+      tags: [Registration]
       operationId: postApiV1RegisterEmailCodeResend
-      description: ''
-      parameters: []
-      responses: {  }
-      tags:
-        - Endpoints
+      summary: Register (email OTP) - resend code
+      description: Resends a 6-digit OTP for a pending user.
+      security: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              required: [email]
               properties:
                 email:
                   type: string
-                  description: 'Must be a valid email address. Must not be greater than 255 characters.'
+                  format: email
+                  description: Must be a valid email address. Max 255.
                   example: gbailey@example.net
-              required:
-                - email
-      security: []
+      responses:
+        "200":
+          description: OTP resent.
+        "404":
+          description: User not found.
+        "409":
+          description: Email already active.
+        "429":
+          description: Rate limited.
+        "500":
+          description: Mail send failed / server error.
+
   /api/v1/register-email-code/verify:
     post:
-      summary: ''
+      tags: [Registration]
       operationId: postApiV1RegisterEmailCodeVerify
-      description: ''
-      parameters: []
-      responses: {  }
-      tags:
-        - Endpoints
+      summary: Register (email OTP) - verify code
+      description: Verifies the OTP (hash match + not expired). Does not activate account yet.
+      security: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              required: [email, code]
               properties:
                 email:
                   type: string
-                  description: 'Must be a valid email address. Must not be greater than 255 characters.'
+                  format: email
+                  description: Must be a valid email address. Max 255.
                   example: gbailey@example.net
                 code:
                   type: string
-                  description: 'Must be 6 characters.'
-                  example: miyvdl
-              required:
-                - email
-                - code
-      security: []
+                  description: 6-digit code.
+                  example: "123456"
+      responses:
+        "200":
+          description: OTP valid.
+        "422":
+          description: OTP invalid/expired.
+        "429":
+          description: Rate limited.
+
   /api/v1/register-email-code/set-password:
     post:
-      summary: ''
+      tags: [Registration]
       operationId: postApiV1RegisterEmailCodeSetPassword
-      description: ''
-      parameters: []
-      responses: {  }
-      tags:
-        - Endpoints
+      summary: Register (email OTP) - set password
+      description: Validates OTP under lock, activates the user, deletes OTP row, and issues a token.
+      security: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              required: [email, code, password]
               properties:
                 email:
                   type: string
-                  description: 'Must be a valid email address. Must not be greater than 255 characters.'
+                  format: email
+                  description: Must be a valid email address. Max 255.
                   example: gbailey@example.net
                 code:
                   type: string
-                  description: 'Must be 6 characters.'
-                  example: miyvdl
+                  description: 6-digit code.
+                  example: "123456"
                 password:
                   type: string
-                  description: ''
-                  example: '|]|{+-'
-              required:
-                - email
-                - code
-                - password
-      security: []
+                  description: User password.
+                  example: "Str0ngP@ssw0rd!"
+      responses:
+        "200":
+          description: Account activated + token issued.
+        "403":
+          description: OTP invalid (anti-enumeration safe).
+        "429":
+          description: Rate limited.
+        "500":
+          description: Server error.
+
   /api/v1/auth/login:
     post:
-      summary: "POST /api/v1/auth/login\n- Anti-enum strict: email inconnu, password KO, compte non actif => INVALID_CREDENTIALS (401)\n- 2FA: retourne un challenge (pas de token)\n- Sans 2FA: émet un token (1 token / device_id)"
-      operationId: pOSTapiv1authloginAntiEnumStrictEmailInconnuPasswordKOCompteNonActifINVALIDCREDENTIALS4012FARetourneUnChallengepasDeTokenSans2FAmetUnToken1TokenDeviceId
-      description: ''
-      parameters: []
-      responses: {  }
-      tags:
-        - Endpoints
+      tags: [Auth]
+      operationId: postApiV1AuthLogin
+      summary: Login (email + password)
+      description: >
+        Anti-enumeration strict: unknown email, wrong password, non-active account => INVALID_CREDENTIALS (401).
+        If 2FA enabled: returns a challenge (no token). If 2FA disabled: issues a token (1 token per device_id).
+      security: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              required: [email, password, device_type, device_name, device_id]
               properties:
                 email:
                   type: string
-                  description: 'Must be a valid email address. Must not be greater than 255 characters.'
+                  format: email
+                  description: Must be a valid email address. Max 255.
                   example: gbailey@example.net
                 password:
                   type: string
-                  description: 'Must be at least 1 character. Must not be greater than 255 characters.'
-                  example: '+-0pBNvYgxwmi/#iw'
+                  description: Password.
+                  example: "+-0pBNvYgxwmi/#iw"
                 device_type:
                   type: string
-                  description: 'Must not be greater than 50 characters.'
-                  example: u
+                  description: Device category (ios/android/web). Max 50.
+                  example: web
                 device_name:
                   type: string
-                  description: 'Must not be greater than 80 characters.'
-                  example: w
+                  description: Human-readable device name. Max 80.
+                  example: "Chrome (Mac)"
                 device_id:
                   type: string
-                  description: 'Must not be greater than 100 characters.'
-                  example: p
+                  description: Stable unique device identifier. Max 100.
+                  example: "device-uuid-123"
                 country:
                   type: string
-                  description: 'Must not be greater than 100 characters.'
-                  example: w
                   nullable: true
-              required:
-                - email
-                - password
-                - device_type
-                - device_name
-                - device_id
-      security: []
+                  description: Optional country metadata. Max 100.
+                  example: BJ
+      responses:
+        "200":
+          description: Login success (token) OR 2FA challenge returned.
+        "401":
+          description: Invalid credentials (anti-enumeration).
+        "429":
+          description: Rate limited.
+        "500":
+          description: Server error.
+
   /api/v1/auth/2fa/verify-login:
     post:
-      summary: "POST /api/v1/auth/2fa/verify-login\nÉtape 2: valider TOTP puis émettre token (et enforce 1 token/device)."
-      operationId: pOSTapiv1auth2faverifyLogintape2ValiderTOTPPuismettreTokenetEnforce1Tokendevice
-      description: "- Anti-bruteforce: 5 tentatives max/challenge\n- Challenge bindé: UA + IP (strict) + device_id (issu du challenge)\n- TTL non prolongeable (on conserve TTL restant)\n- IMPORTANT: ne révoque PAS toutes les sessions (UX banking pragmatique)"
-      parameters: []
-      responses: {  }
-      tags:
-        - Endpoints
+      tags: [Two-factor authentication]
+      operationId: postApiV1Auth2faVerifyLogin
+      summary: Verify login 2FA (step 2)
+      description: >
+        Validates TOTP and issues a token (enforces 1 token/device).
+        Anti-bruteforce: max 5 attempts/challenge. Challenge bound to UA + IP + device_id.
+      security: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              required: [challenge_id, code]
               properties:
                 challenge_id:
                   type: string
-                  description: 'Must be a valid UUID.'
+                  format: uuid
+                  description: Challenge id returned by /auth/login when 2FA is required.
                   example: 6ff8f7f6-1eb3-3525-be4a-3932c805afed
                 code:
                   type: string
-                  description: 'Must be between 4 and 10 digits.'
-                  example: '1374491716'
-              required:
-                - challenge_id
-                - code
-      security: []
+                  description: TOTP code (4-10 digits).
+                  example: "123456"
+      responses:
+        "200":
+          description: Token issued.
+        "403":
+          description: Invalid code / binding mismatch / too many attempts.
+        "410":
+          description: Challenge expired or missing.
+        "429":
+          description: Rate limited.
+        "500":
+          description: Server error.
+
   /api/v1/auth/logout:
     post:
-      summary: "POST /api/v1/auth/logout\nSupprime le token courant."
-      operationId: pOSTapiv1authlogoutSupprimeLeTokenCourant
-      description: ''
-      parameters: []
-      responses: {  }
-      tags:
-        - Endpoints
-      security: []
+      tags: [Auth]
+      operationId: postApiV1AuthLogout
+      summary: Logout (current session)
+      description: Deletes the current token only.
+      responses:
+        "200":
+          description: Logged out.
+        "401":
+          description: Unauthenticated.
+
   /api/v1/auth/logout-device:
     post:
-      summary: "POST /api/v1/auth/logout-device\nDéconnecte un device_id spécifique."
-      operationId: pOSTapiv1authlogoutDeviceDconnecteUnDeviceIdSpcifique
-      description: ''
-      parameters: []
-      responses: {  }
-      tags:
-        - Endpoints
+      tags: [Devices]
+      operationId: postApiV1AuthLogoutDevice
+      summary: Logout a specific device
+      description: Revokes the token associated with a device_id.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              required: [device_id]
               properties:
                 device_id:
                   type: string
-                  description: 'Must not be greater than 100 characters.'
-                  example: b
-              required:
-                - device_id
-      security: []
+                  description: Device id. Max 100.
+                  example: "device-uuid-123"
+      responses:
+        "200":
+          description: Device logged out.
+        "401":
+          description: Unauthenticated.
+        "422":
+          description: Validation failed.
+
   /api/v1/auth/devices:
     get:
-      summary: "GET /api/v1/auth/devices\n- Filtre les tokens \"legacy\" (device_id null)"
-      operationId: gETapiv1authdevicesFiltreLesTokenslegacydeviceIdNull
-      description: ''
-      parameters: []
+      tags: [Devices]
+      operationId: getApiV1AuthDevices
+      summary: List active devices
+      description: Lists active tokens with device metadata (excludes legacy tokens without device_id).
       responses:
-        401:
-          description: ''
+        "200":
+          description: OK
+        "401":
+          description: Unauthenticated.
           content:
             application/json:
               schema:
@@ -363,18 +439,20 @@ paths:
                   code:
                     type: string
                     example: UNAUTHENTICATED
-      tags:
-        - Endpoints
-      security: []
+
   /api/v1/auth/2fa/status:
     get:
-      summary: 'GET /api/v1/auth/2fa/status'
-      operationId: gETapiv1auth2fastatus
-      description: "Règles “prod/banking” (selon ton choix) :\n- Si 2FA activée : ne renvoie JAMAIS secret ni otpauth_uri\n- Si 2FA désactivée : renvoie secret + otpauth_uri (front peut afficher clé + QR)\n\nEnrôlement :\n- Le secret d'enrôlement est \"pending\" en cache (pas en DB)\n- Commit en DB uniquement après /enable validé"
-      parameters: []
+      tags: [Two-factor authentication]
+      operationId: getApiV1Auth2faStatus
+      summary: 2FA status (and enrollment info if disabled)
+      description: >
+        If enabled: never returns secret nor otpauth_uri.
+        If disabled: returns pending secret + otpauth_uri for enrollment (stored in cache, not DB).
       responses:
-        401:
-          description: ''
+        "200":
+          description: OK
+        "401":
+          description: Unauthenticated.
           content:
             application/json:
               schema:
@@ -389,75 +467,93 @@ paths:
                   code:
                     type: string
                     example: UNAUTHENTICATED
-      tags:
-        - Endpoints
-      security: []
+
   /api/v1/auth/2fa/enable:
     post:
-      summary: "POST /api/v1/auth/2fa/enable\nBody: { \"code\": \"123456\" }"
-      operationId: pOSTapiv1auth2faenableBodycode123456
-      description: "- Vérifie le code contre le secret pending (cache)\n- Si OK : commit le secret en DB + active 2FA\n- Ne force PAS logout"
-      parameters: []
-      responses: {  }
-      tags:
-        - Endpoints
+      tags: [Two-factor authentication]
+      operationId: postApiV1Auth2faEnable
+      summary: Enable 2FA
+      description: Verifies code against pending secret (cache), commits secret to DB, enables 2FA. Does not force logout.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              required: [code]
               properties:
                 code:
                   type: string
-                  description: 'Must be at least 4 characters. Must not be greater than 10 characters.'
-                  example: bngzmi
-              required:
-                - code
-      security: []
+                  description: TOTP code (4-10 digits).
+                  example: "123456"
+      responses:
+        "200":
+          description: 2FA enabled.
+        "401":
+          description: Unauthenticated.
+        "403":
+          description: Invalid code / enrollment missing.
+        "429":
+          description: Rate limited.
+        "500":
+          description: Server error.
+
   /api/v1/auth/2fa/disable:
     post:
-      summary: "POST /api/v1/auth/2fa/disable\nBody: { \"code\": \"123456\" }"
-      operationId: pOSTapiv1auth2fadisableBodycode123456
-      description: "- Vérifie le code TOTP (secret en DB, car 2FA active)\n- Désactive + reset secret (force nouvel enrôlement)\n- Ne force PAS logout"
-      parameters: []
-      responses: {  }
-      tags:
-        - Endpoints
+      tags: [Two-factor authentication]
+      operationId: postApiV1Auth2faDisable
+      summary: Disable 2FA
+      description: Verifies code against DB secret, disables 2FA (resets secret). Does not force logout.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              required: [code]
               properties:
                 code:
                   type: string
-                  description: 'Must be at least 4 characters. Must not be greater than 10 characters.'
-                  example: bngzmi
-              required:
-                - code
-      security: []
+                  description: TOTP code (4-10 digits).
+                  example: "123456"
+      responses:
+        "200":
+          description: 2FA disabled.
+        "401":
+          description: Unauthenticated.
+        "403":
+          description: Invalid code.
+        "429":
+          description: Rate limited.
+        "500":
+          description: Server error.
+
   /api/v1/auth/2fa/verify:
     post:
-      summary: "POST /api/v1/auth/2fa/verify\nBody: { \"code\": \"123456\" }"
-      operationId: pOSTapiv1auth2faverifyBodycode123456
-      description: "Endpoint “step-up” : prouver 2FA pour action sensible.\nNe délivre pas de token."
-      parameters: []
-      responses: {  }
-      tags:
-        - Endpoints
+      tags: [Two-factor authentication]
+      operationId: postApiV1Auth2faVerify
+      summary: Step-up verify 2FA
+      description: Proves 2FA for sensitive actions. Does not issue a token.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              required: [code]
               properties:
                 code:
                   type: string
-                  description: 'Must be at least 4 characters. Must not be greater than 10 characters.'
-                  example: bngzmi
-              required:
-                - code
-      security: []
+                  description: TOTP code (4-10 digits).
+                  example: "123456"
+      responses:
+        "200":
+          description: Verified.
+        "401":
+          description: Unauthenticated.
+        "403":
+          description: Invalid code.
+        "429":
+          description: Rate limited.
+        "500":
+          description: Server error.
