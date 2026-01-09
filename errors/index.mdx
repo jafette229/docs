@@ -2,22 +2,24 @@
 title: Errors
 ---
 
-# Errors
+Flowxi returns **structured, deterministic JSON errors** designed for
+**frontend-safe control**, **anti-enumeration**, and **bank-level UX consistency**.
 
-Flowxi returns **structured, predictable JSON errors** designed for
-**frontend control**, **anti-enumeration**, and **bank-level UX consistency**.
+Errors are part of the **API contract**.  
+They are stable, localized, and intentionally explicit so the frontend can react
+*without guessing* or parsing messages.
 
-Each error contains:
-
-- a stable machine-readable `code`
-- a localized human-readable `message`
-- optional structured details (`errors`)
+Every error response is produced either by:
+- global exception handling (`bootstrap/app.php`)
+- domain controllers (auth, 2FA, registration, etc.)
 
 ---
 
-## Global error format
+## Error contract (guaranteed)
 
-### Standard error
+Every error response follows one of the formats below.
+
+### Standard error shape
 
 ```json
 {
@@ -26,7 +28,96 @@ Each error contains:
 }
 ```
 
-### Validation error (422)
+Properties:
+
+* `code`
+  Stable, machine-readable identifier.
+  **Never localized. Never changes.**
+* `message`
+  Human-readable explanation, **always localized**.
+* HTTP status
+  Meaningful and intentional (see mapping below).
+
+---
+
+### Validation error (HTTP 422)
+
+Used exclusively for request validation failures.
+
+```json
+{
+  "message": "Some fields are invalid.",
+  "code": "VALIDATION_FAILED",
+  "errors": {
+    "email": [
+      "The email must be a valid email address."
+    ],
+    "password": [
+      "The password must be at least 8 characters."
+    ]
+  }
+}
+```
+
+Properties:
+
+* `errors` is a **field → array of messages** map
+* messages are localized
+* field names are **never localized**
+* structure is stable across all endpoints
+
+Frontend must treat validation errors as **form-level**, not global failures.
+
+---
+
+## Localization of errors
+
+Errors use the **same locale resolution middleware** as the rest of the API.
+
+Resolution order:
+
+1. `X-App-Locale` header (recommended)
+2. `Accept-Language`
+3. `user.locale` (authenticated requests)
+4. fallback: `fr`
+
+Localization applies to:
+
+* `message`
+* validation messages inside `errors`
+* emails triggered during the request
+
+`code` values are **never localized** and must always be used for logic.
+
+---
+
+## HTTP status semantics (contract)
+
+| HTTP status | Meaning                           | Frontend responsibility        |
+| ----------- | --------------------------------- | ------------------------------ |
+| 422         | Invalid request payload           | Show inline field errors       |
+| 401         | Unauthenticated / invalid session | Clear token, redirect to login |
+| 403         | Forbidden / invalid verification  | Stay in flow, show error       |
+| 404         | Resource not found                | Show not-found or restart flow |
+| 409         | Conflict (state or business rule) | Propose alternative path       |
+| 410         | Gone (expired challenge / token)  | Restart the related flow       |
+| 429         | Rate limited                      | Disable action, show cooldown  |
+| 500         | Server error (production-safe)    | Show generic retry UI          |
+
+This mapping is **intentional** and consistent across the platform.
+
+---
+
+## Global errors (from exception handling)
+
+These errors can occur on **any endpoint**.
+
+---
+
+### Validation failed
+
+**HTTP:** `422`
+**Code:** `VALIDATION_FAILED`
 
 ```json
 {
@@ -38,44 +129,90 @@ Each error contains:
 }
 ```
 
----
+Frontend guidance:
 
-## Localization
-
-Error messages are localized using the same locale resolution as the rest of the API:
-
-1. `X-App-Locale`
-2. `Accept-Language`
-3. `user.locale`
-4. fallback `fr`
-
-`code` values are **never localized**.
+* Render field-level errors next to inputs
+* Do not show multiple global toasts
+* Do not retry automatically
 
 ---
 
-## HTTP status semantics
+### Unauthenticated
 
-| Status | Meaning                       | Frontend action                    |
-|------|-------------------------------|------------------------------------|
-| 422  | Validation failed              | Show inline field errors            |
-| 401  | Unauthenticated                | Clear token, redirect to login      |
-| 403  | Forbidden / invalid code       | Stay in flow, show message          |
-| 404  | Resource not found             | Show not-found state                |
-| 409  | Conflict                       | Suggest next step                   |
-| 410  | MFA challenge expired          | Restart login                       |
-| 429  | Rate limited                   | Disable action, show cooldown       |
-| 500  | Server error                   | Show generic retry UI               |
+**HTTP:** `401`
+**Code:** `UNAUTHENTICATED`
+
+```json
+{
+  "message": "Unauthenticated.",
+  "code": "UNAUTHENTICATED"
+}
+```
+
+Frontend guidance:
+
+* Clear stored token
+* Reset user state
+* Redirect to login or onboarding entry point
+
+---
+
+### Rate limited
+
+**HTTP:** `429`
+**Code:** `RATE_LIMITED`
+
+```json
+{
+  "message": "Too many attempts. Try again later.",
+  "code": "RATE_LIMITED"
+}
+```
+
+Frontend guidance:
+
+* Disable the triggering action
+* Show cooldown or timer
+* Never retry automatically in a loop
+
+---
+
+### Server error (production)
+
+**HTTP:** `500`
+**Code:** `SERVER_ERROR`
+
+```json
+{
+  "message": "Something went wrong. Try again later.",
+  "code": "SERVER_ERROR"
+}
+```
+
+Frontend guidance:
+
+* Show generic error UI
+* Offer a retry action
+* Log client-side context if available
+
+Stack traces are **never exposed** in production.
 
 ---
 
 ## Authentication errors (anti-enumeration)
 
+Authentication endpoints are deliberately strict.
+
 ### Invalid credentials
 
-Returned for:
-- unknown email
-- wrong password
-- non-active account
+Returned for **all** of the following cases:
+
+* unknown email
+* wrong password
+* account not in `active` state
+
+**HTTP:** `401`
+**Code:** `INVALID_CREDENTIALS`
 
 ```json
 {
@@ -84,45 +221,82 @@ Returned for:
 }
 ```
 
-Frontend must **never infer which condition failed**.
+Frontend rules:
+
+* Never indicate which field failed
+* Never suggest account existence
+* Optional UX: show “Forgot password?” only if implemented
+
+This behavior is **non-negotiable**.
 
 ---
 
-## MFA-specific errors
+## MFA (2FA) related errors
 
-| Code                    | Meaning                          |
-|-------------------------|----------------------------------|
-| `MFA_REQUIRED`          | 2FA challenge required           |
-| `MFA_CHALLENGE_GONE`    | Challenge expired or missing     |
-| `MFA_CHALLENGE_INVALID` | Challenge binding mismatch       |
-| `MFA_CODE_INVALID`      | Wrong TOTP code                  |
-| `MFA_TOO_MANY_ATTEMPTS` | Brute-force protection triggered |
+These errors occur during login or 2FA management.
 
----
+| Code                    | HTTP | Meaning                                       |
+| ----------------------- | ---- | --------------------------------------------- |
+| `MFA_REQUIRED`          | 200  | Second factor required (challenge issued)     |
+| `MFA_CHALLENGE_GONE`    | 410  | Challenge expired or missing                  |
+| `MFA_CHALLENGE_INVALID` | 400  | Challenge binding mismatch (IP / UA / device) |
+| `MFA_CODE_INVALID`      | 403  | Wrong TOTP code                               |
+| `MFA_TOO_MANY_ATTEMPTS` | 429  | Too many attempts on the same challenge       |
 
-## Registration errors
+Frontend guidance:
 
-| Code                    | Meaning                    |
-|-------------------------|----------------------------|
-| `EMAIL_ALREADY_USED`    | Email already active       |
-| `EMAIL_ALREADY_ACTIVE`  | Account already activated  |
-| `USER_NOT_FOUND`        | No user for resend flow    |
-| `OTP_INVALID`           | Invalid or expired code    |
+* Restart login on `MFA_CHALLENGE_GONE`
+* Do not retry automatically
+* Lock UI on `MFA_TOO_MANY_ATTEMPTS`
 
 ---
 
-## Frontend best practices
+## Registration & onboarding errors
 
-- Always branch on `code`
-- Treat `429` as UX requirement, not error
-- Never display raw backend stack info
-- Never leak account existence
+| Code                   | HTTP    | Meaning                                 |
+| ---------------------- | ------- | --------------------------------------- |
+| `EMAIL_ALREADY_USED`   | 409     | Email already belongs to active account |
+| `EMAIL_ALREADY_ACTIVE` | 409     | Account already activated               |
+| `USER_NOT_FOUND`       | 404     | No user for resend flow                 |
+| `OTP_INVALID`          | 422/403 | Invalid or expired email code           |
+| `MAGIC_LINK_INVALID`   | 403     | Expired or invalid magic link           |
+
+Frontend guidance:
+
+* Always propose the **next valid step**
+* Never reveal internal state
+* Restart flows cleanly when needed
+
+---
+
+## Frontend best practices (mandatory)
+
+* Always branch logic on `code`, never on `message`
+* Treat `429` as a product constraint, not a bug
+* Never expose backend internals to users
+* Never infer account existence from errors
+* Assume all messages are localized
+
+---
+
+## Guarantees
+
+Flowxi error handling guarantees:
+
+* stable and documented error codes
+* deterministic HTTP statuses
+* strict anti-enumeration
+* full localization coverage
+* production-safe responses only
+
+If the frontend respects this contract, **no guesswork is required**.
 
 ---
 
 ## Testing checklist
 
-- Verify same response for wrong email vs wrong password
-- Trigger validation errors and check `errors`
-- Trigger rate limits and ensure UI cooldown
-- Test MFA expiration paths
+* Verify identical responses for wrong email vs wrong password
+* Trigger validation errors and inspect `errors` structure
+* Hit rate limits and ensure UI cooldown
+* Test expired MFA challenges
+* Switch `X-App-Locale` and verify translated messages
