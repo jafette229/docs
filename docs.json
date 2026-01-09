@@ -22,16 +22,24 @@
           { "group": "Localization", "pages": ["localization/index"] }
         ]
       },
-{
-  "tab": "API reference",
-  "groups": [{ "group": "API", "pages": ["api-reference/index"] }]
-}
+      {
+        "tab": "API reference",
+        "groups": [
+          {
+            "group": "API",
+            "pages": ["api-reference/introduction"]
+          },
+          {
+            "group": "Endpoints",
+            "openapi": "api-reference/openapi.yaml"
+          }
+        ]
+      }
     ]
   },
   "logo": {
     "light": "/public/logo/light-2.png",
-    "dark": "/public/logo/dark-2.png",
-    "height": 50
+    "dark": "/public/logo/dark-2.png"
   },
   "navbar": {
     "links": [{ "label": "Support", "href": "mailto:support@flowxi.app" }]
