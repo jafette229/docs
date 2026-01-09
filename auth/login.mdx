@@ -2,100 +2,239 @@
 title: Login
 ---
 
-# Login
+Flowxi login is designed for **security, determinism, and device-level control**.
+
+This endpoint authenticates a user using **email + password** and conditionally enforces
+**TOTP-based 2FA**, depending on the user configuration.
+
+The behavior described here reflects the **exact production logic** implemented in the
+login controller, request validators, and rate limiters.
+
+---
 
 ## Endpoint
 
 `POST /api/v1/auth/login`
 
-This endpoint authenticates a user with email + password.
+This endpoint is **public** (no token required).
 
 ---
 
-## Request
+## Request payload
 
-Required fields:
+### Required fields
 
-- `email` (string)
-- `password` (string)
+These fields are always required and validated strictly.
 
-Recommended device fields (used for session management):
+- `email` (string)  
+  User email address. Normalized (lowercased, trimmed) server-side.
 
-- `device_id` (string) — required in practice (1 token per device)
-- `device_type` (string) — e.g. `ios`, `android`, `web`
-- `device_name` (string) — user-friendly name
-- `country` (string) — optional
+- `password` (string)  
+  User password.
 
----
+- `device_id` (string)  
+  Stable, unique identifier for the device.  
+  **Mandatory** to enforce one-session-per-device.
 
-## Responses
+- `device_type` (string)  
+  Device category (e.g. `ios`, `android`, `web`).
 
-### Success (no 2FA)
+- `device_name` (string)  
+  Human-readable name shown in device/session listings.
 
-Returns a Bearer token.
+### Optional fields
 
-Response includes:
-
-- `mfa_required: false`
-- `access_token`
-- `token_type: Bearer`
-- `account_status`
-- `user_id`
+- `country` (string)  
+  Optional metadata, stored with the session token.
 
 ---
 
-### 2FA required
+## Localization
 
-If the user has 2FA enabled, login returns a challenge:
+Before any authentication logic runs, locale is resolved using:
 
-- `mfa_required: true`
-- `challenge_id`
-- `otp_type: totp`
-- `expires_in` (seconds)
+1. `X-App-Locale`
+2. `Accept-Language`
+3. `user.locale` (if authenticated)
+4. fallback: `fr`
 
-No token is returned at this stage.
+The resolved locale is applied to:
 
-Client must call:
+- response `message`
+- validation errors
+- authentication errors
+
+The `code` field is **never localized**.
+
+---
+
+## Login outcomes
+
+There are **two possible outcomes**: direct token issuance or a 2FA challenge.
+
+---
+
+### Case 1: Login success (2FA not enabled)
+
+If the user does **not** have 2FA enabled:
+
+1. Credentials are verified
+2. Any existing token for the same `device_id` is revoked
+3. A new token is issued atomically
+
+```json
+{
+  "message": "Login successful.",
+  "code": "LOGIN_SUCCESS",
+  "data": {
+    "mfa_required": false,
+    "access_token": "plain_text_token",
+    "token_type": "Bearer",
+    "account_status": "active",
+    "user_id": 123
+  }
+}
+```
+
+Characteristics:
+
+- exactly **one token per `device_id`**
+- other devices remain logged in
+- token issuance is transactional
+
+---
+
+### Case 2: 2FA required
+
+If the user **has 2FA enabled**, no token is issued at this stage.
+
+Instead, the API returns a **login challenge**.
+
+```json
+{
+  "message": "Two-factor verification required.",
+  "code": "MFA_REQUIRED",
+  "data": {
+    "mfa_required": true,
+    "challenge_id": "uuid",
+    "otp_type": "totp",
+    "expires_in": 300
+  }
+}
+```
+
+Characteristics of the challenge:
+
+- stored in cache
+- bound to:
+  - IP address
+  - User-Agent
+  - `device_id`
+- hard expiration (TTL is never extended)
+- max 5 verification attempts
+
+---
+
+## Verify login with 2FA (second step)
+
+### Endpoint
+
 `POST /api/v1/auth/2fa/verify-login`
 
----
+### Required fields
 
-## Security behavior (important)
+- `challenge_id` (UUID)  
+  Identifier returned by the login step.
 
-### Anti-enumeration (strict)
-
-These cases all return the same 401 error:
-- unknown email
-- wrong password
-- user status not `active`
-
-### Rate limiting
-
-Login is rate-limited per `email + ip` (attempts are counted even if the user does not exist).
-
-### Token issuance policy
-
-When 2FA is not required:
-- Flowxi enforces **1 token per device_id**
-- before issuing a new token, previous tokens with the same `device_id` are deleted
+- `code` (string)  
+  TOTP code from the authenticator app.
 
 ---
 
-## Verify login 2FA (second step)
+### Verification rules
 
-`POST /api/v1/auth/2fa/verify-login`
+- strict IP match
+- strict User-Agent match
+- maximum 5 attempts per challenge
+- immediate invalidation on expiration
+- no TTL extension on retries
 
-Input:
-- `challenge_id`
-- `code` (TOTP)
+Any mismatch invalidates the challenge.
 
-Challenge validation rules:
-- strict bind to **IP + User-Agent**
-- max 5 attempts
-- hard expiration (no TTL extension)
+---
 
-Success returns:
-- `access_token`
-- `token_type: Bearer`
-- `account_status`
-- `user_id`
+### Successful verification response
+
+```json
+{
+  "message": "Login successful.",
+  "code": "LOGIN_SUCCESS",
+  "data": {
+    "access_token": "plain_text_token",
+    "token_type": "Bearer",
+    "account_status": "active",
+    "user_id": 123
+  }
+}
+```
+
+---
+
+## Anti-enumeration guarantees
+
+The login endpoint **never reveals** whether:
+
+- the email exists
+- the password is incorrect
+- the account is inactive or blocked
+
+All such failures return:
+
+- HTTP `401`
+- `code: INVALID_CREDENTIALS`
+
+Frontend logic **must not** attempt to infer the cause.
+
+---
+
+## Rate limiting
+
+Login attempts are rate-limited per `email + ip`.
+
+- attempts are counted even if the user does not exist
+- limits apply before password verification
+- repeated failures result in `RATE_LIMITED` (429)
+
+---
+
+## Token issuance policy
+
+When a token is issued:
+
+- **1 active token per `device_id`**
+- previous tokens for the same device are deleted **before** creation
+- advisory locks (PostgreSQL) prevent concurrent duplication
+
+This guarantees deterministic session behavior.
+
+---
+
+## Common frontend mistakes to avoid
+
+- Treating `device_id` as optional
+- Assuming login always returns a token
+- Storing `challenge_id` long-term
+- Retrying 2FA verification after expiration
+- Using `message` instead of `code` for logic
+
+---
+
+## Summary
+
+The login endpoint provides:
+
+- deterministic authentication behavior
+- strong anti-enumeration guarantees
+- device-level session isolation
+- first-class 2FA enforcement
+- fully localized responses
