@@ -1,8 +1,8 @@
+````mdx
 ---
-
 title: Me
 description: Récupérer et mettre à jour le profil utilisateur connecté, y compris l’upload photo (Backblaze B2).
-----------------------------------------------------------------------------------------------------------------
+---
 
 # Me
 
@@ -20,9 +20,9 @@ Headers recommandés :
 Accept: application/json
 Authorization: Bearer <token>
 X-App-Locale: fr
-```
+````
 
-* `X-App-Locale` : optionnel, mais recommandé. Fallback `fr` si absent/invalide.
+* `X-App-Locale` : optionnel, mais recommandé. Fallback `fr` si absent ou invalide.
 * Les erreurs et messages sont localisés.
 
 ---
@@ -36,7 +36,7 @@ Retourne le profil complet de l’utilisateur connecté.
 ```bash
 curl --location 'https://api.flowxi.app/api/v1/me' \
   --header 'Accept: application/json' \
-  --header 'Authorization: Bearer 28|I78nrZCcEqJ5MexUxwfQwMfuy2hc8vu0bCdOj6VY66bbc325' \
+  --header 'Authorization: Bearer <token>' \
   --header 'X-App-Locale: fr'
 ```
 
@@ -92,7 +92,7 @@ Met à jour les informations de base.
 curl --location --request PATCH 'https://api.flowxi.app/api/v1/me' \
   --header 'Accept: application/json' \
   --header 'Content-Type: application/json' \
-  --header 'Authorization: Bearer 28|I78nrZCcEqJ5MexUxwfQwMfuy2hc8vu0bCdOj6VY66bbc325' \
+  --header 'Authorization: Bearer <token>' \
   --header 'X-App-Locale: fr' \
   --data '{
     "first_name": "Jafette",
@@ -127,27 +127,27 @@ curl --location --request PATCH 'https://api.flowxi.app/api/v1/me' \
 
 ## POST /api/v1/me/photo
 
-Upload photo de profil (multipart/form-data).
+Upload photo de profil (`multipart/form-data`).
 
 ### Règles
 
-* Champ: `photo` (required)
-* Types: `jpg`, `jpeg`, `png`, `webp`
-* Taille max: `4096 KB`
-* Stockage:
+* Champ : `photo` (required)
+* Types : `jpg`, `jpeg`, `png`, `webp`
+* Taille max : `4096 KB`
+* Stockage :
 
   * upload sur **Backblaze B2 (S3 compatible)**
-  * en DB, on stocke **la clé** `profile_photos/...` (pas l’URL)
-  * on supprime l’ancienne photo si elle était déjà dans `profile_photos/`
+  * en base, seule la **clé** `profile_photos/...` est stockée
+  * suppression automatique de l’ancienne photo si présente
 
 ### Exemple (curl)
 
 ```bash
 curl --location 'https://api.flowxi.app/api/v1/me/photo' \
   --header 'Accept: application/json' \
-  --header 'Authorization: Bearer 28|I78nrZCcEqJ5MexUxwfQwMfuy2hc8vu0bCdOj6VY66bbc325' \
+  --header 'Authorization: Bearer <token>' \
   --header 'X-App-Locale: fr' \
-  --form "photo=@/Users/fandjinoujaf/Downloads/tempImageWjNaPv.jpg"
+  --form "photo=@/path/to/photo.jpg"
 ```
 
 ### Réponse 200
@@ -159,29 +159,6 @@ curl --location 'https://api.flowxi.app/api/v1/me/photo' \
   "data": {
     "photo_url": "https://s3.us-west-004.backblazeb2.com/flowxi-storage-prod/profile_photos/user_17_....jpg?...",
     "updated_at": "2026-01-09T17:39:23.000000Z"
-  }
-}
-```
-
-### Exemple erreur 422 (mauvais fichier)
-
-```bash
-curl --location 'https://api.flowxi.app/api/v1/me/photo' \
-  --header 'Accept: application/json' \
-  --header 'Authorization: Bearer 28|I78nrZCcEqJ5MexUxwfQwMfuy2hc8vu0bCdOj6VY66bbc325' \
-  --header 'X-App-Locale: fr' \
-  --form "photo=@/Users/fandjinoujaf/Downloads/Email.json"
-```
-
-```json
-{
-  "message": "Certaines informations sont invalides.",
-  "code": "VALIDATION_FAILED",
-  "errors": {
-    "photo": [
-      "The photo field must be an image.",
-      "The photo field must be a file of type: jpg, jpeg, png, webp."
-    ]
   }
 }
 ```
