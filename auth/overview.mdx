@@ -1,89 +1,388 @@
 ---
-title: Authentication overview
+
+## title: Authentication overview
+
+Flowxi authentication is built for **financial-grade security**, **deterministic behavior**, and **frontend-safe integration**.
+
+It relies on **Laravel Sanctum personal access tokens (Bearer tokens)** and enforces strict rules around:
+
+* anti-enumeration
+* device-bound sessions
+* rate limiting
+* optional but first-class 2FA (TOTP)
+* full localization of all responses
+
+This document describes the authentication system **as implemented**, based on controllers, middleware, and validation logic.
+
 ---
 
-# Authentication overview
+## Authentication model
 
-Flowxi uses **Laravel Sanctum** personal access tokens (`Bearer`) for authentication.
+Flowxi uses **token-based authentication**.
 
-Authentication is designed for:
-- strict anti-enumeration
-- device-level sessions
-- optional 2FA with step-up verification
+After successful authentication, the API returns:
 
----
+* `access_token` (string)
+* `token_type` = `Bearer`
 
-## Tokens
-
-Successful authentication returns:
-
-- `access_token`
-- `token_type: Bearer`
-
-All protected endpoints require:
+All protected endpoints require the token:
 
 ```http
 Authorization: Bearer <access_token>
 ```
 
+Tokens are **personal**, **revocable**, and **bound to a device**.
+
+---
+
+## Localization (global)
+
+Before any authentication logic runs, the locale is resolved by middleware.
+
+Resolution order:
+
+1. `X-App-Locale` header
+2. `Accept-Language`
+3. `user.locale` (authenticated requests)
+4. fallback: `fr`
+
+The resolved locale applies to:
+
+* `message` fields
+* validation errors
+* authentication errors
+* emails sent during the request
+
+Frontend logic must rely on `code`, never on translated `message`.
+
 ---
 
 ## Supported authentication flows
 
-### Registration
+Flowxi exposes three primary entry points.
 
-- Magic link (email + password setup)
-- Email code (OTP) + password
+---
 
-### Login
+### 1) Registration via magic link
 
-- Email + password
-- Optional TOTP-based 2FA challenge
+Email-first flow. Password is defined after verification.
+
+Flow:
+
+1. Send magic link
+2. User clicks link
+3. Password is set
+4. Account becomes `active`
+5. Token is issued
+
+Endpoints:
+
+* `POST /api/v1/auth/register-email`
+* `POST /api/v1/register-email/resend`
+* `POST /api/v1/auth/register/set-password`
+
+Security properties:
+
+* anti-enumeration
+* single-use expiring links
+* transactional activation
+* localized emails
+
+---
+
+### 2) Registration via email code (OTP)
+
+Code-based verification before password setup.
+
+Flow:
+
+1. Send 6-digit code
+2. Verify code
+3. Set password
+4. Account becomes `active`
+5. Token is issued
+
+Endpoints:
+
+* `POST /api/v1/register-email-code/send`
+* `POST /api/v1/register-email-code/resend`
+* `POST /api/v1/register-email-code/verify`
+* `POST /api/v1/register-email-code/set-password`
+
+Security properties:
+
+* codes stored hashed only
+* expiration enforced at database level
+* strict rate limits on send / verify / set-password
+* transactional activation
+* locale persisted on user
+
+---
+
+### 3) Login (email + password)
+
+Standard login with optional 2FA challenge.
+
+Endpoint:
+
+* `POST /api/v1/auth/login`
+
+Required fields:
+
+* `email`
+* `password`
+* `device_id`
+* `device_type`
+* `device_name`
+
+Optional:
+
+* `country`
+
+---
+
+## Anti-enumeration
+
+The login endpoint never reveals whether:
+
+* an email exists
+* the password is incorrect
+* the account is inactive
+
+All such cases return:
+
+* HTTP `401`
+* `code`: `INVALID_CREDENTIALS`
+
+This behavior is mandatory and must not be bypassed.
+
+---
+
+## Rate limiting
+
+Authentication endpoints are aggressively rate-limited.
+
+Examples:
+
+* login: per `email + ip`
+* OTP send / resend: per `email + ip`
+* OTP verify / set-password: stricter limits
+* 2FA enable / disable / verify: per `user + ip`
+
+Rate limits apply even if the user does not exist.
 
 ---
 
 ## Device-based sessions
 
-Flowxi enforces:
+Flowxi enforces device-level sessions.
 
-- **1 token per `device_id`**
-- New login on same device **revokes previous token**
-- Other devices remain active
+Rules:
 
----
+* exactly one active token per `device_id`
+* re-login on the same device:
 
-## High-level login flow
+  * revokes the previous token
+  * issues a new one
+* other devices remain active
 
-1. Client calls `/auth/login`
-2. If 2FA disabled → token issued
-3. If 2FA enabled → challenge returned
-4. Client verifies via `/auth/2fa/verify-login`
-5. Token issued after successful TOTP
+Enforced transactionally using token deletion and PostgreSQL advisory locks.
 
 ---
 
-## Security guarantees
+## Login without 2FA
 
-- Strict anti-enumeration
-- Rate-limited auth attempts
-- MFA challenges bound to IP + User-Agent
-- Hard challenge expiration (no extension)
-- Localization applied before any response
+If 2FA is disabled:
 
----
+1. Credentials are verified
+2. Existing token for the same device is revoked
+3. New token is issued
 
-## Protected session endpoints
+Response includes:
 
-- `POST /auth/logout`
-- `POST /auth/logout-device`
-- `GET /auth/devices`
+* `access_token`
+* `account_status`
+* `user_id`
 
 ---
 
-## 2FA management
+## Login with 2FA enabled
 
-- Enrollment via pending secret (cache only)
-- Secret committed to DB only after verification
-- No forced logout on enable/disable
-- Step-up verification supported
+Login becomes a two-step process.
 
+### Step 1: Login
+
+`POST /api/v1/auth/login`
+
+Response:
+
+* `mfa_required: true`
+* `challenge_id`
+* `otp_type: totp`
+* `expires_in`
+
+No token is issued.
+
+The challenge is stored in cache and bound to:
+
+* IP
+* User-Agent
+* `device_id`
+
+TTL is fixed and non-extendable.
+
+---
+
+### Step 2: Verify login 2FA
+
+`POST /api/v1/auth/2fa/verify-login`
+
+Input:
+
+* `challenge_id`
+* `code` (TOTP)
+
+Rules:
+
+* max 5 attempts per challenge
+* strict IP + User-Agent match
+* challenge consumed on success
+
+On success:
+
+* previous token for the device is revoked
+* new token is issued
+
+---
+
+## Session & device management
+
+All endpoints below require authentication.
+
+### Logout (current session)
+
+`POST /api/v1/auth/logout`
+
+* deletes the current token only
+* other devices remain active
+
+---
+
+### Logout a specific device
+
+`POST /api/v1/auth/logout-device`
+
+* requires `device_id`
+* revokes the token associated with that device
+
+---
+
+### List active devices
+
+`GET /api/v1/auth/devices`
+
+Returns:
+
+* device metadata
+* IP, user agent, country
+* creation and last-used timestamps
+* current device indicator
+
+Legacy tokens without `device_id` are excluded.
+
+---
+
+## Two-factor authentication (2FA)
+
+Flowxi supports TOTP-based 2FA.
+
+All endpoints are protected.
+
+---
+
+### 2FA status & enrollment
+
+`GET /api/v1/auth/2fa/status`
+
+Behavior:
+
+* if enabled:
+
+  * `enabled: true`
+  * secret and QR are never returned
+* if disabled:
+
+  * a pending secret is generated in cache
+  * response includes:
+
+    * `secret`
+    * `otpauth_uri`
+    * `expires_in`
+
+The secret is not stored in database at this stage.
+
+---
+
+### Enable 2FA
+
+`POST /api/v1/auth/2fa/enable`
+
+Input:
+
+* `code` (TOTP)
+
+Rules:
+
+* verifies code against pending secret
+* on success:
+
+  * commits secret to database
+  * sets `twofa_enabled = true`
+  * clears pending secret
+* does not force logout
+
+---
+
+### Disable 2FA
+
+`POST /api/v1/auth/2fa/disable`
+
+Input:
+
+* `code` (TOTP)
+
+Rules:
+
+* verifies code against database secret
+* on success:
+
+  * clears secret
+  * disables 2FA
+* does not force logout
+
+---
+
+### Step-up verification
+
+`POST /api/v1/auth/2fa/verify`
+
+Used for sensitive actions.
+
+* verifies TOTP
+* does not issue a token
+* updates `twofa_last_verified_at` if present
+
+---
+
+## Guarantees
+
+Flowxi authentication guarantees:
+
+* deterministic error codes
+* strict anti-enumeration
+* device-level session isolation
+* no silent token duplication
+* full localization
+* no secret leakage during 2FA enrollment
+
+All rules described here are enforced in code and validated in production scenarios.
