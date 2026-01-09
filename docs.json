@@ -31,6 +31,7 @@
   "logo": {
     "light": "/public/logo/light-2.png",
     "dark": "/public/logo/dark-2.png"
+    "height": 50
   },
   "navbar": {
     "links": [{ "label": "Support", "href": "mailto:support@flowxi.app" }]
