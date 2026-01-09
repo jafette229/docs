@@ -15,31 +15,19 @@
         "groups": [
           {
             "group": "Overview",
-            "pages": [
-              "index",
-              "introduction"
-            ]
+            "pages": ["index", "introduction"]
           },
           {
             "group": "Authentication",
-            "pages": [
-              "auth/overview",
-              "auth/registration",
-              "auth/login",
-              "auth/2fa"
-            ]
+            "pages": ["auth/overview", "auth/registration", "auth/login", "auth/2fa"]
           },
           {
             "group": "Errors",
-            "pages": [
-              "errors/index"
-            ]
+            "pages": ["errors/index"]
           },
           {
             "group": "Localization",
-            "pages": [
-              "localization/index"
-            ]
+            "pages": ["localization/index"]
           }
         ]
       },
@@ -48,16 +36,14 @@
         "groups": [
           {
             "group": "API",
-            "pages": [
-              "api-reference/introduction"
-            ]
+            "pages": ["api-reference/introduction"]
           }
         ]
       }
     ]
   },
   "logo": {
-    "light": "/logo/light-2.pngg",
+    "light": "/logo/light-2.png",
     "dark": "/logo/dark-2.png"
   },
   "navbar": {
@@ -69,10 +55,7 @@
     ]
   },
   "contextual": {
-    "options": [
-      "copy",
-      "view"
-    ]
+    "options": ["copy", "view"]
   },
   "footer": {
     "socials": {
