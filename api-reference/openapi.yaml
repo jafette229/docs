@@ -17,6 +17,8 @@ tags:
     description: TOTP 2FA endpoints (login verification + manage 2FA).
   - name: Devices
     description: Session/device listing and revocation.
+  - name: Me
+    description: Profile of the authenticated user (Sanctum session).
 
 components:
   securitySchemes:
@@ -24,6 +26,16 @@ components:
       type: http
       scheme: bearer
       bearerFormat: Sanctum
+
+  parameters:
+    XAppLocale:
+      name: X-App-Locale
+      in: header
+      required: false
+      description: Optional locale override (fallback is fr if missing/invalid).
+      schema:
+        type: string
+        example: fr
 
   schemas:
     ApiError:
@@ -343,6 +355,219 @@ components:
       example:
         code: LOGOUT_SUCCESS
         message: Logged out.
+
+    MeProfile:
+      type: object
+      required:
+        - id
+        - email
+        - status
+        - locale
+        - username
+        - photo_url
+        - first_name
+        - last_name
+        - birth_date
+        - country
+        - nationality
+        - phone_number
+        - twofa_enabled
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: integer
+          example: 17
+        email:
+          type: string
+          format: email
+          example: fandjinoujaf@gmail.com
+        status:
+          type: string
+          example: active
+        locale:
+          type: string
+          example: fr
+        username:
+          type: string
+          example: fx00000017
+        photo_url:
+          type: string
+          description: Signed Backblaze URL (short TTL) if uploaded, otherwise a stable public avatar URL.
+          example: https://s3.us-west-004.backblazeb2.com/flowxi-storage-prod/profile_photos/....
+        first_name:
+          type: string
+          nullable: true
+          example: Jafette
+        last_name:
+          type: string
+          nullable: true
+          example: Fandjinou
+        birth_date:
+          type: string
+          nullable: true
+          example: "1999-01-01"
+        country:
+          type: string
+          nullable: true
+          description: ISO 3166-1 alpha-2, normalized uppercase.
+          example: BJ
+        nationality:
+          type: string
+          nullable: true
+          description: ISO 3166-1 alpha-3, normalized uppercase.
+          example: BEN
+        phone_number:
+          type: string
+          nullable: true
+          example: "+22900000000"
+        twofa_enabled:
+          type: boolean
+          example: false
+        created_at:
+          type: string
+          example: "2026-01-09T17:08:57.000000Z"
+        updated_at:
+          type: string
+          example: "2026-01-09T17:39:23.000000Z"
+
+    MeGetResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiOkBase"
+        - type: object
+          required: [data]
+          properties:
+            data:
+              $ref: "#/components/schemas/MeProfile"
+      example:
+        code: ME_OK
+        message: OK
+        data:
+          id: 17
+          email: fandjinoujaf@gmail.com
+          status: active
+          locale: fr
+          username: fx00000017
+          photo_url: https://s3.us-west-004.backblazeb2.com/flowxi-storage-prod/profile_photos/....
+          first_name: Jafette
+          last_name: Fandjinou
+          birth_date: "1999-01-01"
+          country: BJ
+          nationality: BEN
+          phone_number: "+22900000000"
+          twofa_enabled: false
+          created_at: "2026-01-09T17:08:57.000000Z"
+          updated_at: "2026-01-09T17:39:23.000000Z"
+
+    MePatchRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        first_name:
+          type: string
+          nullable: true
+        last_name:
+          type: string
+          nullable: true
+        birth_date:
+          type: string
+          nullable: true
+          description: YYYY-MM-DD
+        country:
+          type: string
+          nullable: true
+          description: ISO 3166-1 alpha-2, normalized uppercase.
+        nationality:
+          type: string
+          nullable: true
+          description: ISO 3166-1 alpha-3, normalized uppercase.
+        phone_number:
+          type: string
+          nullable: true
+
+    MePatchResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiOkBase"
+        - type: object
+          required: [data]
+          properties:
+            data:
+              type: object
+              required:
+                - id
+                - first_name
+                - last_name
+                - birth_date
+                - country
+                - nationality
+                - phone_number
+                - updated_at
+              properties:
+                id:
+                  type: integer
+                  example: 17
+                first_name:
+                  type: string
+                  nullable: true
+                  example: Jafette
+                last_name:
+                  type: string
+                  nullable: true
+                  example: Fandjinou
+                birth_date:
+                  type: string
+                  nullable: true
+                  example: "1999-01-01"
+                country:
+                  type: string
+                  nullable: true
+                  example: BJ
+                nationality:
+                  type: string
+                  nullable: true
+                  example: BEN
+                phone_number:
+                  type: string
+                  nullable: true
+                  example: "+22900000000"
+                updated_at:
+                  type: string
+                  example: "2026-01-09T17:11:56.000000Z"
+      example:
+        code: ME_UPDATED
+        message: Profil mis à jour.
+        data:
+          id: 17
+          first_name: Jafette
+          last_name: Fandjinou
+          birth_date: "1999-01-01"
+          country: BJ
+          nationality: BEN
+          phone_number: "+22900000000"
+          updated_at: "2026-01-09T17:11:56.000000Z"
+
+    MePhotoResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiOkBase"
+        - type: object
+          required: [data]
+          properties:
+            data:
+              type: object
+              required: [photo_url, updated_at]
+              properties:
+                photo_url:
+                  type: string
+                  example: https://s3.us-west-004.backblazeb2.com/flowxi-storage-prod/profile_photos/user_17_....jpg?...
+                updated_at:
+                  type: string
+                  example: "2026-01-09T17:39:23.000000Z"
+      example:
+        code: ME_PHOTO_UPDATED
+        message: Photo de profil mise à jour.
+        data:
+          photo_url: https://s3.us-west-004.backblazeb2.com/flowxi-storage-prod/profile_photos/user_17_....jpg?...
+          updated_at: "2026-01-09T17:39:23.000000Z"
 
   responses:
     ValidationFailed:
@@ -1120,3 +1345,96 @@ paths:
                 message: Invalid 2FA code.
         "429":
           $ref: "#/components/responses/RateLimited"
+
+  /api/v1/me:
+    get:
+      tags: [Me]
+      operationId: getApiV1Me
+      summary: Get current user profile
+      description: Returns the full profile of the authenticated user.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/XAppLocale"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeGetResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+    patch:
+      tags: [Me]
+      operationId: patchApiV1Me
+      summary: Update current user profile
+      description: Updates basic profile fields. `country` and `nationality` are normalized to uppercase.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/XAppLocale"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MePatchRequest"
+            example:
+              first_name: Jafette
+              last_name: Fandjinou
+              birth_date: "1999-01-01"
+              country: BJ
+              nationality: BEN
+              phone_number: "+22900000000"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MePatchResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/v1/me/photo:
+    post:
+      tags: [Me]
+      operationId: postApiV1MePhoto
+      summary: Upload profile photo
+      description: Uploads a profile photo using multipart/form-data (Backblaze B2 S3-compatible). Database stores the object key only.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/XAppLocale"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [photo]
+              properties:
+                photo:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Photo updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MePhotoResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "500":
+          $ref: "#/components/responses/ServerError"
