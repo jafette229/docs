@@ -1,100 +1,28 @@
----
+# Authentication
 
-title: API Reference
-description: Authentication, environments, headers, and examples for using the Flowxi API.
-------------------------------------------------------------------------------------------
+Flowxi uses **Bearer tokens** to authenticate API requests. Tokens are issued after a successful login or registration.
 
-# API Reference
+**⚠️ Tokens are shown only once** at creation time. Copy and store them securely — they cannot be retrieved later.
 
-Flowxi provides a REST API over HTTPS. This section contains the full OpenAPI reference and the practical rules you need to call the API correctly.
+### 🔑 How authentication works
 
-> **Note:** All requests must be made over HTTPS. Plain HTTP requests are rejected.
+* Pass your token in the `Authorization` header using the Bearer scheme.
+* No username or password is sent on API requests.
+* All requests **must** be made over HTTPS. Plain HTTP requests are rejected.
+* Missing, invalid, or expired tokens return **401 Unauthorized**.
 
-## Authentication
+> ❗️ Tokens grant full access to the account. Never expose them publicly, in logs, or in internal tools.
 
-Flowxi API endpoints are secured with **Bearer tokens** (Laravel Sanctum).
+### Sandbox environment
 
-### Workflow
+* Sandbox tokens are scoped to a single developer account.
+* Sandbox tokens are isolated and never shared with other team members.
+* Production and sandbox tokens are strictly separated.
 
-1. Authenticate via login or registration.
-2. Receive an `access_token`.
-3. Send the token on every protected request using the `Authorization` header.
-4. A missing, invalid, or expired token returns **401 UNAUTHENTICATED**.
-
-> **Security:** Keep tokens safe. They grant account access and must never be exposed in logs or public repos.
-
-### Header format
-
-```http
-Authorization: Bearer <ACCESS_TOKEN>
-```
-
-## Environments
-
-* **Production:** `https://api.flowxi.app`
-* **Documentation:** `https://docs.flowxi.app`
-
-## Localization
-
-Responses (errors, messages) are localized according to the user language.
-Include the locale in every request:
-
-```http
-X-App-Locale: fr
-```
-
-* Supported values: `fr`, `en`
-* Fallback: `fr`
-
-## Common Headers
-
-```http
-Content-Type: application/json
-Accept: application/json
-Authorization: Bearer <ACCESS_TOKEN>
-X-App-Locale: fr
-```
-
-## Examples
-
-### Healthcheck (no auth)
-
-```bash
-curl --location 'https://api.flowxi.app/api/v1/health' \
-  --header 'Accept: application/json' \
-  --header 'X-App-Locale: fr'
-```
-
-### Login
-
-```bash
-curl --location 'https://api.flowxi.app/api/v1/auth/login' \
-  --header 'Content-Type: application/json' \
-  --header 'Accept: application/json' \
-  --header 'X-App-Locale: fr' \
-  --data '{
-    "email": "user@example.com",
-    "password": "Str0ngP@ssw0rd!",
-    "device_type": "web",
-    "device_name": "Chrome (Mac)",
-    "device_id": "device-uuid-123",
-    "country": "BJ"
-  }'
-```
-
-### List Devices (authenticated)
+### Example request
 
 ```bash
 curl --location 'https://api.flowxi.app/api/v1/auth/devices' \
-  --header 'Accept: application/json' \
-  --header 'Authorization: Bearer <ACCESS_TOKEN>' \
-  --header 'X-App-Locale: fr'
-```
-
-## OpenAPI Specification
-
-The interactive reference is generated from the OpenAPI spec:
-
-```mdx
-<OpenAPI spec="/api-reference/openapi.yaml" />
+  --header 'Content-Type: application/json' \
+  --header 'Authorization: Bearer <ACCESS_TOKEN>'
 ```
