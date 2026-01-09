@@ -1,0 +1,259 @@
+---
+title: Localization
+---
+
+# Localization
+
+Flowxi is **localization-first by design**.
+
+All API responses, validation messages, authentication errors, and emails are returned
+in the **effective locale resolved for the request**.
+
+This page documents **exactly how locale is resolved**, what the frontend must send,
+and how fallback behavior works.
+
+---
+
+## Supported locales
+
+Flowxi currently supports:
+
+- `fr` (default and fallback)
+- `en`
+
+If an unsupported locale is provided, Flowxi will **always fall back to `fr`**.
+
+---
+
+## Locale resolution order (strict)
+
+For **every request**, the backend resolves the locale in the following order:
+
+1. **Custom header** `X-App-Locale`  
+2. **Standard header** `Accept-Language`  
+3. **Authenticated user locale** (`user.locale`)  
+4. **Fallback locale** (`fr`)
+
+The first valid and supported locale wins.
+
+---
+
+## 1) `X-App-Locale` (highest priority)
+
+This is the **recommended header** for frontend applications.
+
+### Example
+
+```http
+X-App-Locale: en
+```
+
+Behavior:
+
+- Overrides all other locale sources
+- Works for both public and authenticated endpoints
+- Used for:
+  - API `message`
+  - validation messages
+  - emails sent during the request
+
+### Frontend recommendation
+
+Always send `X-App-Locale` on **every API request**, even after login.
+
+---
+
+## 2) `Accept-Language`
+
+If `X-App-Locale` is not present, Flowxi parses `Accept-Language`.
+
+### Example
+
+```http
+Accept-Language: en-US,en;q=0.9,fr;q=0.8
+```
+
+Parsing rules:
+
+- Values are normalized (`_` → `-`)
+- Region is stripped (`en-US` → `en`)
+- Quality values (`q=`) are ignored
+- First supported language wins
+
+Supported example results:
+
+| Header value              | Effective locale |
+|--------------------------|------------------|
+| `en-US,en;q=0.9`         | `en`             |
+| `fr-FR,fr;q=0.8`         | `fr`             |
+| `es,pt;q=0.9`            | fallback `fr`    |
+
+---
+
+## 3) Authenticated user locale
+
+If no locale header is provided and the request is authenticated:
+
+- Flowxi checks `user.locale`
+- If valid and supported, it is applied
+
+This is useful for:
+- background API calls
+- device-based sessions
+- server-to-server calls without UI headers
+
+---
+
+## 4) Fallback locale
+
+If **no valid locale** is resolved:
+
+- Flowxi falls back to `fr`
+
+This fallback is **guaranteed** and never fails.
+
+---
+
+## Effective locale propagation
+
+Once resolved:
+
+- `app()->setLocale(locale)` is applied
+- The locale is stored internally as `effective_locale` for the request
+- All translations use this locale consistently
+
+There is **no per-message override**.
+
+---
+
+## What is localized
+
+The resolved locale applies to:
+
+- `message` in all API responses
+- validation error messages
+- authentication and security errors
+- emails sent during the request lifecycle
+
+Example:
+
+```json
+{
+  "message": "Invalid credentials.",
+  "code": "INVALID_CREDENTIALS"
+}
+```
+
+The same request with `X-App-Locale: fr`:
+
+```json
+{
+  "message": "Identifiants invalides.",
+  "code": "INVALID_CREDENTIALS"
+}
+```
+
+---
+
+## What is NOT localized
+
+The following are **never localized**:
+
+- `code` fields (machine-readable)
+- enum values
+- field names in payloads
+- JSON structure
+
+Frontend logic must always rely on `code`, not `message`.
+
+---
+
+## Frontend implementation examples
+
+---
+
+### Example: Axios (recommended)
+
+```ts
+import axios from "axios";
+
+const api = axios.create({
+  baseURL: "https://api.flowxi.com",
+});
+
+api.interceptors.request.use((config) => {
+  config.headers["X-App-Locale"] = getUserLocale(); // "fr" or "en"
+  return config;
+});
+```
+
+---
+
+### Example: Fetch API
+
+```ts
+fetch("/api/v1/auth/login", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "X-App-Locale": "en",
+  },
+  body: JSON.stringify(payload),
+});
+```
+
+---
+
+### Example: After login
+
+Even after authentication, continue sending the header:
+
+```http
+Authorization: Bearer <token>
+X-App-Locale: en
+```
+
+Do **not** rely solely on `user.locale`.
+
+---
+
+## Updating user locale
+
+Flowxi expects the frontend to:
+
+1. Let the user choose a language
+2. Store it client-side
+3. Send it via `X-App-Locale` on every request
+
+Updating `user.locale` server-side is optional and used as a fallback only.
+
+---
+
+## Common mistakes to avoid
+
+- ❌ Relying only on `Accept-Language`
+- ❌ Inferring locale from country
+- ❌ Using `message` for frontend logic
+- ❌ Assuming English is default
+
+---
+
+## Guarantees
+
+Flowxi guarantees:
+
+- A locale is always resolved
+- Messages are always returned in a supported language
+- Fallback behavior is deterministic
+- No partial localization states
+
+---
+
+## Testing checklist
+
+- Send `X-App-Locale: fr` and verify French responses
+- Send `X-App-Locale: en` and verify English responses
+- Remove all locale headers and verify fallback to `fr`
+- Authenticate a user with `user.locale = en` and send no headers
+- Verify emails are sent in the same locale as the API response
+
