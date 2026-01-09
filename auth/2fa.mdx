@@ -2,85 +2,282 @@
 title: Two-factor authentication
 ---
 
-# Two-factor authentication (2FA)
+Flowxi supports **TOTP-based two-factor authentication (2FA)** using standard authenticator
+applications such as **Google Authenticator**, **Authy**, or compatible tools.
 
-Flowxi supports **TOTP** (Google Authenticator, Authy, etc.).
+2FA is **optional**, **user-controlled**, and implemented with **bank-grade safety rules**
+to avoid partial states, secret leakage, or inconsistent sessions.
 
-2FA is optional and user-controlled.
+This page documents the **exact 2FA behavior** as enforced by controllers, cache usage,
+rate limiters, and persistence rules.
 
 ---
 
-## Enrollment model (important)
+## 2FA model (design principles)
 
-- Enrollment secret is **generated in cache**
-- Secret is **never stored in DB** until verified
-- DB commit happens **only after `/enable` succeeds**
+Flowxi implements 2FA with the following guarantees:
 
-This prevents ghost 2FA states.
+- No 2FA secret is ever stored without proof
+- Enrollment is **explicit and atomic**
+- No automatic logout on enable or disable
+- Deterministic behavior across login, verification, and management
+- Full localization of all responses
+
+2FA is always **TOTP-based**. SMS or email-based MFA is not used.
+
+---
+
+## Enrollment lifecycle (critical)
+
+2FA enrollment follows a **two-phase model**.
+
+### Phase 1: Pending enrollment (cache only)
+
+- A secret is generated **on demand**
+- Stored **only in cache**
+- Has a strict TTL (`auth.twofa_enroll_ttl`)
+- Never written to the database
+
+### Phase 2: Commit after verification
+
+- The user proves ownership by submitting a valid TOTP code
+- Only then:
+  - the secret is stored in DB
+  - `twofa_enabled` is set to `true`
+- The pending secret is immediately cleared from cache
+
+This prevents:
+- ghost 2FA states
+- unused secrets in DB
+- accidental activation
 
 ---
 
 ## Get 2FA status
 
-`GET /api/v1/auth/2fa/status`
+### Endpoint
 
-### If enabled
+`GET /api/v1/auth/2fa/status`  
+(Protected — Bearer token required)
+
+This endpoint is the **single source of truth** for frontend state.
+
+---
+
+### Response when 2FA is enabled
+
+If the user already has 2FA enabled:
 
 - `enabled: true`
-- no secret
-- no QR code
+- **no secret**
+- **no otpauth URI**
 
-### If disabled
+Example behavior:
 
-- `enabled: false`
-- `secret`
-- `otpauth_uri`
-- `expires_in`
+- frontend must assume 2FA is active
+- re-enrollment is not possible without disabling first
+
+No sensitive material is ever returned.
+
+---
+
+### Response when 2FA is disabled
+
+If 2FA is not enabled:
+
+- a **pending secret** is created (or reused if still valid)
+- the response includes:
+  - `secret`
+  - `otpauth_uri`
+  - `expires_in`
+  - `issuer`
+
+This allows the frontend to:
+
+- show a QR code
+- display the manual secret
+- show a countdown for enrollment expiration
+
+The secret is **not yet active** at this stage.
 
 ---
 
 ## Enable 2FA
 
-`POST /api/v1/auth/2fa/enable`
+### Endpoint
 
-- Verifies code against **pending secret**
-- Commits secret to DB
-- Does **not** revoke sessions
+`POST /api/v1/auth/2fa/enable`  
+(Protected — Bearer token required)
+
+### Input
+
+- `code` (string) — TOTP code from the authenticator app
+
+---
+
+### Validation & rules
+
+When enabling 2FA, Flowxi enforces:
+
+- rate limiting per `user + ip`
+- verification against the **pending secret**
+- TOTP tolerance of ±1 interval
+- immediate failure if the pending secret is missing or expired
+
+---
+
+### On success
+
+If the code is valid:
+
+- the secret is written to the database
+- `twofa_enabled` is set to `true`
+- the pending secret is removed from cache
+- **existing sessions remain active**
+
+No forced logout occurs.
+
+---
+
+### On failure
+
+Possible failure cases include:
+
+- missing pending secret
+- invalid or expired code
+- too many attempts
+
+Each case returns a **stable error code** and localized message.
 
 ---
 
 ## Disable 2FA
 
-`POST /api/v1/auth/2fa/disable`
+### Endpoint
 
-- Verifies code against DB secret
-- Clears secret
-- Forces fresh enrollment next time
+`POST /api/v1/auth/2fa/disable`  
+(Protected — Bearer token required)
 
----
+### Input
 
-## Step-up verification
-
-`POST /api/v1/auth/2fa/verify`
-
-Used to prove 2FA for sensitive actions.
-
-- Does not issue token
-- Updates `twofa_last_verified_at`
+- `code` (string) — TOTP code generated using the current DB secret
 
 ---
 
-## Login with 2FA
+### Validation & rules
 
-1. `/auth/login` → challenge
-2. `/auth/2fa/verify-login`
-3. Token issued after verification
+Disabling 2FA enforces:
+
+- rate limiting per `user + ip`
+- verification against the **stored DB secret**
+- strict validation of the TOTP code
 
 ---
 
-## Security constraints
+### On success
 
-- Rate-limited enable/disable
-- Max attempts enforced
-- TOTP tolerance ±1 interval
-- Challenge bound to IP + User-Agent
+If the code is valid:
+
+- `twofa_enabled` is set to `false`
+- `twofa_secret` is cleared from DB
+- any pending enrollment secret is cleared
+- future enrollment requires a **new secret**
+
+Existing sessions remain active.
+
+---
+
+## Step-up verification (sensitive actions)
+
+### Endpoint
+
+`POST /api/v1/auth/2fa/verify`  
+(Protected — Bearer token required)
+
+This endpoint is used to **prove 2FA** before performing sensitive operations
+(e.g. security changes, high-risk actions).
+
+---
+
+### Behavior
+
+- verifies a TOTP code against the DB secret
+- does **not** issue a token
+- updates `twofa_last_verified_at` if the column exists
+- rate-limited per `user + ip`
+
+This allows the backend to enforce **recent 2FA proof** without re-authentication.
+
+---
+
+## 2FA during login
+
+When a user has 2FA enabled, login becomes a **two-step flow**.
+
+### Step 1: Login
+
+`POST /api/v1/auth/login`
+
+Instead of issuing a token, the API returns:
+
+- `mfa_required: true`
+- `challenge_id`
+- `otp_type: totp`
+- `expires_in`
+
+The challenge is:
+
+- stored in cache
+- bound to **IP + User-Agent + device_id**
+- limited to 5 attempts
+- hard-expiring (TTL never extended)
+
+---
+
+### Step 2: Verify login challenge
+
+`POST /api/v1/auth/2fa/verify-login`
+
+- validates the challenge bindings
+- verifies the TOTP code
+- consumes the challenge
+- issues a token **only after success**
+
+This ensures strong protection against replay and brute force attacks.
+
+---
+
+## Security constraints (summary)
+
+Flowxi enforces the following for 2FA:
+
+- rate-limited enable, disable, verify, and login verification
+- no secret persistence without proof
+- no QR/secret leakage once enabled
+- strict challenge binding (IP + User-Agent)
+- deterministic error codes
+- full localization of all responses
+
+---
+
+## Frontend integration rules
+
+- Always call `/auth/2fa/status` to determine UI state
+- Never assume 2FA state locally
+- Do not store secrets or challenges long-term
+- Use `code` fields for logic, not messages
+- Treat 2FA as a mandatory second step when required
+
+---
+
+## Guarantees
+
+Flowxi 2FA guarantees:
+
+- no partial enrollment states
+- no silent activation
+- no forced session invalidation
+- no ambiguous login outcomes
+- consistent, auditable behavior across all flows
+
+All rules above are enforced directly in production code.
