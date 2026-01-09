@@ -1,217 +1,1005 @@
-{
-  "openapi": "3.1.0",
-  "info": {
-    "title": "OpenAPI Plant Store",
-    "description": "A sample API that uses a plant store as an example to demonstrate features in the OpenAPI specification",
-    "license": {
-      "name": "MIT"
-    },
-    "version": "1.0.0"
-  },
-  "servers": [
-    {
-      "url": "http://sandbox.mintlify.com"
-    }
-  ],
-  "security": [
-    {
-      "bearerAuth": []
-    }
-  ],
-  "paths": {
-    "/plants": {
-      "get": {
-        "description": "Returns all plants from the system that the user has access to",
-        "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "description": "The maximum number of results to return",
-            "schema": {
-              "type": "integer",
-              "format": "int32"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Plant response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Plant"
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Unexpected error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "description": "Creates a new plant in the store",
-        "requestBody": {
-          "description": "Plant to add to the store",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/NewPlant"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "plant response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Plant"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "unexpected error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/plants/{id}": {
-      "delete": {
-        "description": "Deletes a single plant based on the ID supplied",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "ID of plant to delete",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Plant deleted",
-            "content": {}
-          },
-          "400": {
-            "description": "unexpected error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  },
-  "webhooks": {
-    "/plant/webhook": {
-      "post": {
-        "description": "Information about a new plant added to the store",
-        "requestBody": {
-          "description": "Plant added to the store",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/NewPlant"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Return a 200 status to indicate that the data was received successfully"
-          }
-        }
-      }
-    }
-  },
-  "components": {
-    "schemas": {
-      "Plant": {
-        "required": [
-          "name"
-        ],
-        "type": "object",
-        "properties": {
-          "name": {
-            "description": "The name of the plant",
-            "type": "string"
-          },
-          "tag": {
-            "description": "Tag to specify the type",
-            "type": "string"
-          }
-        }
-      },
-      "NewPlant": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/Plant"
-          },
-          {
-            "required": [
-              "id"
-            ],
-            "type": "object",
-            "properties": {
-              "id": {
-                "description": "Identification number of the plant",
-                "type": "integer",
-                "format": "int64"
-              }
-            }
-          }
-        ]
-      },
-      "Error": {
-        "required": [
-          "error",
-          "message"
-        ],
-        "type": "object",
-        "properties": {
-          "error": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "message": {
-            "type": "string"
-          }
-        }
-      }
-    },
-    "securitySchemes": {
-      "bearerAuth": {
-        "type": "http",
-        "scheme": "bearer"
-      }
-    }
-  }
-}
+openapi: 3.0.3
+info:
+  title: Flowxi API Documentation
+  version: 1.0.0
+
+servers:
+  - url: https://api.flowxi.app
+
+tags:
+  - name: Health
+    description: Service healthcheck.
+  - name: Registration
+    description: Registration flows (magic link + email OTP).
+  - name: Auth
+    description: Login and session management.
+  - name: Two-factor authentication
+    description: TOTP 2FA endpoints (login verification + manage 2FA).
+  - name: Devices
+    description: Session/device listing and revocation.
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Sanctum
+
+  schemas:
+    ApiError:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Machine-readable code.
+        message:
+          type: string
+          description: Localized message.
+      example:
+        code: UNAUTHENTICATED
+        message: Unauthenticated.
+
+    ValidationError:
+      type: object
+      required: [code, message, errors]
+      properties:
+        code:
+          type: string
+          example: VALIDATION_FAILED
+        message:
+          type: string
+          example: Validation failed.
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+      example:
+        code: VALIDATION_FAILED
+        message: Validation failed.
+        errors:
+          email:
+            - The email field is required.
+
+    ApiOkBase:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+
+    MagicLinkSentResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkBase'
+      example:
+        code: MAGIC_LINK_SENT
+        message: Magic link sent.
+
+    MagicLinkResentResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkBase'
+      example:
+        code: MAGIC_LINK_RESENT
+        message: Magic link resent.
+
+    OtpSentResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkBase'
+      example:
+        code: OTP_SENT
+        message: OTP sent.
+
+    OtpResentResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkBase'
+      example:
+        code: OTP_RESENT
+        message: OTP resent.
+
+    OtpVerifyOkResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkBase'
+        - type: object
+          required: [valid]
+          properties:
+            valid:
+              type: boolean
+              example: true
+      example:
+        code: OTP_VALID
+        message: OTP valid.
+        valid: true
+
+    TokenIssuedResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkBase'
+        - type: object
+          required: [access_token, token_type, user_id, account_status]
+          properties:
+            access_token:
+              type: string
+              description: Bearer token (plain text).
+            token_type:
+              type: string
+              example: Bearer
+            user_id:
+              type: integer
+              example: 123
+            account_status:
+              type: string
+              example: active
+      example:
+        code: PASSWORD_SET_SUCCESS
+        message: Password set successfully.
+        access_token: "125|XXXXXXXXXXXXXXXXXXXXXXXX"
+        token_type: Bearer
+        user_id: 123
+        account_status: active
+
+    LoginSuccessResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkBase'
+        - type: object
+          required: [mfa_required, access_token, token_type, account_status, user_id]
+          properties:
+            mfa_required:
+              type: boolean
+              example: false
+            access_token:
+              type: string
+            token_type:
+              type: string
+              example: Bearer
+            account_status:
+              type: string
+              example: active
+            user_id:
+              type: integer
+              example: 123
+      example:
+        code: LOGIN_SUCCESS
+        message: Login successful.
+        mfa_required: false
+        access_token: "125|XXXXXXXXXXXXXXXXXXXXXXXX"
+        token_type: Bearer
+        account_status: active
+        user_id: 123
+
+    LoginMfaRequiredResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkBase'
+        - type: object
+          required: [mfa_required, challenge_id, otp_type, expires_in]
+          properties:
+            mfa_required:
+              type: boolean
+              example: true
+            challenge_id:
+              type: string
+              format: uuid
+            otp_type:
+              type: string
+              example: totp
+            expires_in:
+              type: integer
+              example: 300
+      example:
+        code: MFA_REQUIRED
+        message: Two-factor authentication required.
+        mfa_required: true
+        challenge_id: "6ff8f7f6-1eb3-3525-be4a-3932c805afed"
+        otp_type: totp
+        expires_in: 300
+
+    DevicesListResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkBase'
+        - type: object
+          required: [devices]
+          properties:
+            devices:
+              type: array
+              items:
+                type: object
+                required: [id, device_name, device_type, device_id, ip_address, user_agent, country, created_at, last_used_at, is_current]
+                properties:
+                  id: { type: integer, example: 999 }
+                  device_name: { type: string, example: "Chrome (Mac)" }
+                  device_type: { type: string, example: web }
+                  device_id: { type: string, example: "device-uuid-123" }
+                  ip_address: { type: string, example: "203.0.113.10" }
+                  user_agent: { type: string, example: "Mozilla/5.0 ..." }
+                  country: { type: string, nullable: true, example: BJ }
+                  created_at: { type: string, example: "2026-01-09 11:15:00" }
+                  last_used_at: { type: string, nullable: true, example: "2026-01-09 11:20:00" }
+                  is_current: { type: boolean, example: true }
+      example:
+        code: DEVICES_LISTED
+        message: Devices listed.
+        devices: []
+
+    TwoFaStatusResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkBase'
+        - type: object
+          required: [enabled, email, secret, otpauth_uri, issuer]
+          properties:
+            enabled: { type: boolean }
+            email: { type: string, format: email }
+            secret: { type: string, nullable: true }
+            otpauth_uri: { type: string, nullable: true }
+            issuer: { type: string }
+            expires_in: { type: integer, nullable: true }
+      examples:
+        enabled:
+          value:
+            code: TWOFA_STATUS
+            message: 2FA is enabled.
+            enabled: true
+            email: user@example.com
+            secret: null
+            otpauth_uri: null
+            issuer: Flowxi
+        disabled:
+          value:
+            code: TWOFA_STATUS
+            message: 2FA is disabled.
+            enabled: false
+            email: user@example.com
+            secret: "BASE32SECRET..."
+            otpauth_uri: "otpauth://totp/..."
+            issuer: Flowxi
+            expires_in: 600
+
+    TwoFaEnabledResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkBase'
+        - type: object
+          required: [enabled]
+          properties:
+            enabled: { type: boolean, example: true }
+      example:
+        code: TWOFA_ENABLED
+        message: 2FA enabled.
+        enabled: true
+
+    TwoFaDisabledResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkBase'
+        - type: object
+          required: [enabled]
+          properties:
+            enabled: { type: boolean, example: false }
+      example:
+        code: TWOFA_DISABLED
+        message: 2FA disabled.
+        enabled: false
+
+    TwoFaVerifiedResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkBase'
+        - type: object
+          required: [success]
+          properties:
+            success: { type: boolean, example: true }
+      example:
+        code: TWOFA_VERIFIED
+        message: 2FA verified.
+        success: true
+
+    LogoutOkResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkBase'
+      example:
+        code: LOGOUT_SUCCESS
+        message: Logged out.
+
+  responses:
+    ValidationFailed:
+      description: Validation failed.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ValidationError' }
+
+    Unauthenticated:
+      description: Unauthenticated.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: UNAUTHENTICATED, message: Unauthenticated. }
+
+    RateLimited:
+      description: Rate limited.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: RATE_LIMITED, message: Too many requests. }
+
+    ServerError:
+      description: Server error.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: SERVER_ERROR, message: Server error. }
+
+paths:
+  /api/v1/health:
+    get:
+      tags: [Health]
+      operationId: getApiV1Health
+      summary: Health
+      description: Healthcheck endpoint.
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, ts, app_locale, effective_locale]
+                properties:
+                  status: { type: string, example: ok }
+                  ts: { type: string, example: "2026-01-09T10:26:05.213928Z" }
+                  app_locale: { type: string, example: en }
+                  effective_locale: { type: string, example: en }
+              example:
+                status: ok
+                ts: "2026-01-09T10:26:05.213928Z"
+                app_locale: en
+                effective_locale: en
+
+  /api/v1/auth/register-email:
+    post:
+      tags: [Registration]
+      operationId: postApiV1AuthRegisterEmail
+      summary: Register (magic link) - send link
+      description: Creates (or reuses) a pending user and sends a single-use magic link email.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email, example: gbailey@example.net }
+      responses:
+        "201":
+          description: Magic link sent.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MagicLinkSentResponse' }
+        "409":
+          description: Email already used (active account).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              example: { code: EMAIL_ALREADY_USED, message: Email already used. }
+        "429":
+          $ref: '#/components/responses/RateLimited'
+        "500":
+          description: Mail send failed OR server error.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              examples:
+                mail_send_failed:
+                  value: { code: MAIL_SEND_FAILED, message: Mail send failed. }
+                server_error:
+                  value: { code: SERVER_ERROR, message: Server error. }
+
+  /api/v1/auth/register/set-password:
+    post:
+      tags: [Registration]
+      operationId: postApiV1AuthRegisterSetPassword
+      summary: Register (magic link) - set password
+      description: Validates magic link token, sets password, activates account, and issues a token.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, email, password, password_confirmation]
+              properties:
+                token:
+                  type: string
+                  description: Magic link token (sha256 hex => 64 chars).
+                  example: bngzmiyvdljnikhwaykcmyuwpwlvqwrsitcpscqldzsnrwtujwvlxjklqppwqbew
+                email: { type: string, format: email, example: cynthia.fahey@example.net }
+                password: { type: string, example: "Str0ngP@ssw0rd!" }
+                password_confirmation: { type: string, example: "Str0ngP@ssw0rd!" }
+      responses:
+        "200":
+          description: Account activated + token issued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenIssuedResponse' }
+              example:
+                code: PASSWORD_SET_SUCCESS
+                message: Password set successfully.
+                access_token: "125|XXXXXXXXXXXXXXXXXXXXXXXX"
+                token_type: Bearer
+                user_id: 123
+                account_status: active
+        "403":
+          description: Invalid/expired/used magic link (anti-enumeration safe).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              example: { code: MAGIC_LINK_INVALID, message: Invalid or expired magic link. }
+        "404":
+          description: User not found.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              example: { code: USER_NOT_FOUND, message: User not found. }
+        "422":
+          $ref: '#/components/responses/ValidationFailed'
+        "429":
+          $ref: '#/components/responses/RateLimited'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /api/v1/register-email/resend:
+    post:
+      tags: [Registration]
+      operationId: postApiV1RegisterEmailResend
+      summary: Register (magic link) - resend link
+      description: Resends a magic link for a pending user. Active users get 409.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email, example: gbailey@example.net }
+      responses:
+        "200":
+          description: Magic link resent.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MagicLinkResentResponse' }
+        "404":
+          description: User not found.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              example: { code: USER_NOT_FOUND, message: User not found. }
+        "409":
+          description: Email already active.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              example: { code: EMAIL_ALREADY_ACTIVE, message: Email already active. }
+        "429":
+          $ref: '#/components/responses/RateLimited'
+        "500":
+          description: Mail send failed OR server error.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              examples:
+                mail_send_failed:
+                  value: { code: MAIL_SEND_FAILED, message: Mail send failed. }
+                server_error:
+                  value: { code: SERVER_ERROR, message: Server error. }
+
+  /api/v1/register-email-code/send:
+    post:
+      tags: [Registration]
+      operationId: postApiV1RegisterEmailCodeSend
+      summary: Register (email OTP) - send code
+      description: Creates (or reuses) a pending user and sends a 6-digit OTP by email.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email, example: gbailey@example.net }
+      responses:
+        "201":
+          description: OTP sent.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OtpSentResponse' }
+        "409":
+          description: Email already used (active account).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              example: { code: EMAIL_ALREADY_USED, message: Email already used. }
+        "429":
+          $ref: '#/components/responses/RateLimited'
+        "500":
+          description: Mail send failed OR server error.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              examples:
+                mail_send_failed:
+                  value: { code: MAIL_SEND_FAILED, message: Mail send failed. }
+                server_error:
+                  value: { code: SERVER_ERROR, message: Server error. }
+
+  /api/v1/register-email-code/resend:
+    post:
+      tags: [Registration]
+      operationId: postApiV1RegisterEmailCodeResend
+      summary: Register (email OTP) - resend code
+      description: Resends a 6-digit OTP for a pending user.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email, example: gbailey@example.net }
+      responses:
+        "200":
+          description: OTP resent.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OtpResentResponse' }
+        "404":
+          description: User not found.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              example: { code: USER_NOT_FOUND, message: User not found. }
+        "409":
+          description: Email already active.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              example: { code: EMAIL_ALREADY_ACTIVE, message: Email already active. }
+        "429":
+          $ref: '#/components/responses/RateLimited'
+        "500":
+          description: Mail send failed OR server error.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              examples:
+                mail_send_failed:
+                  value: { code: MAIL_SEND_FAILED, message: Mail send failed. }
+                server_error:
+                  value: { code: SERVER_ERROR, message: Server error. }
+
+  /api/v1/register-email-code/verify:
+    post:
+      tags: [Registration]
+      operationId: postApiV1RegisterEmailCodeVerify
+      summary: Register (email OTP) - verify code
+      description: Verifies the OTP (hash match + not expired). Does not activate account yet.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, code]
+              properties:
+                email: { type: string, format: email, example: gbailey@example.net }
+                code: { type: string, description: 6-digit code, example: "123456" }
+      responses:
+        "200":
+          description: OTP valid.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OtpVerifyOkResponse' }
+        "422":
+          description: OTP invalid/expired.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              example: { code: OTP_INVALID, message: OTP invalid. }
+        "429":
+          $ref: '#/components/responses/RateLimited'
+
+  /api/v1/register-email-code/set-password:
+    post:
+      tags: [Registration]
+      operationId: postApiV1RegisterEmailCodeSetPassword
+      summary: Register (email OTP) - set password
+      description: Validates OTP under lock, activates the user, deletes OTP row, and issues a token.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, code, password, password_confirmation]
+              properties:
+                email: { type: string, format: email, example: gbailey@example.net }
+                code: { type: string, description: 6-digit code, example: "123456" }
+                password: { type: string, example: "Str0ngP@ssw0rd!" }
+                password_confirmation: { type: string, example: "Str0ngP@ssw0rd!" }
+      responses:
+        "200":
+          description: Account activated + token issued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenIssuedResponse' }
+        "403":
+          description: OTP invalid (anti-enumeration safe).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              example: { code: OTP_INVALID, message: OTP invalid. }
+        "422":
+          $ref: '#/components/responses/ValidationFailed'
+        "429":
+          $ref: '#/components/responses/RateLimited'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      operationId: postApiV1AuthLogin
+      summary: Login (email + password)
+      description: >
+        Strict anti-enumeration: unknown email, wrong password, non-active account => INVALID_CREDENTIALS (401).
+        If 2FA enabled: returns a challenge (no token). If 2FA disabled: issues a token (1 token per device_id).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, device_type, device_name, device_id]
+              properties:
+                email: { type: string, format: email, example: gbailey@example.net }
+                password: { type: string, example: "+-0pBNvYgxwmi/#iw" }
+                device_type: { type: string, example: web }
+                device_name: { type: string, example: "Chrome (Mac)" }
+                device_id: { type: string, example: "device-uuid-123" }
+                country: { type: string, nullable: true, example: BJ }
+      responses:
+        "200":
+          description: Login success (token) OR 2FA challenge returned.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/LoginSuccessResponse'
+                  - $ref: '#/components/schemas/LoginMfaRequiredResponse'
+              examples:
+                login_success:
+                  value:
+                    code: LOGIN_SUCCESS
+                    message: Login successful.
+                    mfa_required: false
+                    access_token: "125|XXXXXXXXXXXXXXXXXXXXXXXX"
+                    token_type: Bearer
+                    account_status: active
+                    user_id: 123
+                mfa_required:
+                  value:
+                    code: MFA_REQUIRED
+                    message: Two-factor authentication required.
+                    mfa_required: true
+                    challenge_id: "6ff8f7f6-1eb3-3525-be4a-3932c805afed"
+                    otp_type: totp
+                    expires_in: 300
+        "401":
+          description: Invalid credentials (anti-enumeration).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              example: { code: INVALID_CREDENTIALS, message: Invalid credentials. }
+        "429":
+          $ref: '#/components/responses/RateLimited'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /api/v1/auth/2fa/verify-login:
+    post:
+      tags: [Two-factor authentication]
+      operationId: postApiV1Auth2faVerifyLogin
+      summary: Verify login 2FA (step 2)
+      description: >
+        Validates TOTP and issues a token (enforces 1 token/device).
+        Challenge bound to IP + User-Agent + device_id.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [challenge_id, code]
+              properties:
+                challenge_id: { type: string, format: uuid, example: 6ff8f7f6-1eb3-3525-be4a-3932c805afed }
+                code: { type: string, example: "123456" }
+      responses:
+        "200":
+          description: Token issued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenIssuedResponse' }
+              example:
+                code: LOGIN_SUCCESS
+                message: Login successful.
+                access_token: "125|XXXXXXXXXXXXXXXXXXXXXXXX"
+                token_type: Bearer
+                account_status: active
+                user_id: 123
+        "400":
+          description: Challenge invalid (binding mismatch / user invalid / missing device_id).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              example: { code: MFA_CHALLENGE_INVALID, message: Invalid challenge. }
+        "403":
+          description: Invalid TOTP code.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              example: { code: MFA_CODE_INVALID, message: Invalid 2FA code. }
+        "410":
+          description: Challenge expired or missing.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              example: { code: MFA_CHALLENGE_GONE, message: Challenge expired. }
+        "429":
+          description: Too many attempts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              example: { code: MFA_TOO_MANY_ATTEMPTS, message: Too many attempts. }
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      operationId: postApiV1AuthLogout
+      summary: Logout (current session)
+      description: Deletes the current token only.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Logged out.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LogoutOkResponse' }
+        "401":
+          $ref: '#/components/responses/Unauthenticated'
+
+  /api/v1/auth/logout-device:
+    post:
+      tags: [Devices]
+      operationId: postApiV1AuthLogoutDevice
+      summary: Logout a specific device
+      description: Revokes the token associated with a device_id.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [device_id]
+              properties:
+                device_id: { type: string, example: "device-uuid-123" }
+      responses:
+        "200":
+          description: Device logged out.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LogoutOkResponse' }
+        "401":
+          $ref: '#/components/responses/Unauthenticated'
+        "404":
+          description: Device not found.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              example: { code: DEVICE_NOT_FOUND, message: Device not found. }
+        "422":
+          $ref: '#/components/responses/ValidationFailed'
+
+  /api/v1/auth/devices:
+    get:
+      tags: [Devices]
+      operationId: getApiV1AuthDevices
+      summary: List active devices
+      description: Lists active tokens with device metadata (excludes legacy tokens without device_id).
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DevicesListResponse' }
+        "401":
+          $ref: '#/components/responses/Unauthenticated'
+
+  /api/v1/auth/2fa/status:
+    get:
+      tags: [Two-factor authentication]
+      operationId: getApiV1Auth2faStatus
+      summary: 2FA status (and enrollment info if disabled)
+      description: >
+        If enabled: never returns secret nor otpauth_uri.
+        If disabled: returns pending secret + otpauth_uri for enrollment (stored in cache, not DB).
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TwoFaStatusResponse' }
+        "401":
+          $ref: '#/components/responses/Unauthenticated'
+
+  /api/v1/auth/2fa/enable:
+    post:
+      tags: [Two-factor authentication]
+      operationId: postApiV1Auth2faEnable
+      summary: Enable 2FA
+      description: Verifies code against pending secret (cache), commits secret to DB, enables 2FA. Does not force logout.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string, example: "123456" }
+      responses:
+        "200":
+          description: 2FA enabled.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TwoFaEnabledResponse' }
+        "401":
+          $ref: '#/components/responses/Unauthenticated'
+        "403":
+          description: Invalid code.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              example: { code: TWOFA_INVALID_CODE, message: Invalid 2FA code. }
+        "422":
+          description: Already enabled / missing secret.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              examples:
+                already_enabled:
+                  value: { code: TWOFA_ALREADY_ENABLED, message: 2FA already enabled. }
+                missing_secret:
+                  value: { code: TWOFA_MISSING_SECRET, message: Missing enrollment secret. }
+        "429":
+          description: Rate limited.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              example: { code: TWOFA_RATE_LIMITED, message: Too many requests. }
+
+  /api/v1/auth/2fa/disable:
+    post:
+      tags: [Two-factor authentication]
+      operationId: postApiV1Auth2faDisable
+      summary: Disable 2FA
+      description: Verifies code against DB secret, disables 2FA (resets secret). Does not force logout.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string, example: "123456" }
+      responses:
+        "200":
+          description: 2FA disabled.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TwoFaDisabledResponse' }
+        "401":
+          $ref: '#/components/responses/Unauthenticated'
+        "403":
+          description: Invalid code.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              example: { code: TWOFA_INVALID_CODE, message: Invalid 2FA code. }
+        "422":
+          description: Not enabled / missing secret.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              examples:
+                not_enabled:
+                  value: { code: TWOFA_NOT_ENABLED, message: 2FA not enabled. }
+                missing_secret:
+                  value: { code: TWOFA_MISSING_SECRET, message: Missing 2FA secret. }
+        "429":
+          description: Rate limited.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              example: { code: TWOFA_RATE_LIMITED, message: Too many requests. }
+
+  /api/v1/auth/2fa/verify:
+    post:
+      tags: [Two-factor authentication]
+      operationId: postApiV1Auth2faVerify
+      summary: Step-up verify 2FA
+      description: Proves 2FA for sensitive actions. Does not issue a token.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string, example: "123456" }
+      responses:
+        "200":
+          description: Verified.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TwoFaVerifiedResponse' }
+        "401":
+          $ref: '#/components/responses/Unauthenticated'
+        "403":
+          description: Invalid code.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              example: { code: TWOFA_INVALID_CODE, message: Invalid 2FA code. }
+        "422":
+          description: Not enabled / missing secret.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              examples:
+                not_enabled:
+                  value: { code: TWOFA_NOT_ENABLED, message: 2FA not enabled. }
+                missing_secret:
+                  value: { code: TWOFA_MISSING_SECRET, message: Missing 2FA secret. }
+        "429":
+          description: Rate limited.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              example: { code: TWOFA_RATE_LIMITED, message: Too many requests. }
