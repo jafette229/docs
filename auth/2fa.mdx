@@ -6,28 +6,36 @@ title: Two-factor authentication
 
 Flowxi supports **TOTP** (Google Authenticator, Authy, etc.).
 
-2FA is managed through protected endpoints (Bearer token required).
+2FA is optional and user-controlled.
 
 ---
 
-## Status & enrollment
+## Enrollment model (important)
 
-### Get status
+- Enrollment secret is **generated in cache**
+- Secret is **never stored in DB** until verified
+- DB commit happens **only after `/enable` succeeds**
+
+This prevents ghost 2FA states.
+
+---
+
+## Get 2FA status
 
 `GET /api/v1/auth/2fa/status`
 
-If 2FA is enabled:
-- returns `enabled: true`
-- does **not** return secret nor otpauth URI
+### If enabled
 
-If 2FA is disabled:
-- generates a **pending enrollment secret** in cache
-- returns:
-  - `secret`
-  - `otpauth_uri`
-  - `expires_in`
+- `enabled: true`
+- no secret
+- no QR code
 
-The pending secret is committed to the database only after `enable` succeeds.
+### If disabled
+
+- `enabled: false`
+- `secret`
+- `otpauth_uri`
+- `expires_in`
 
 ---
 
@@ -35,16 +43,9 @@ The pending secret is committed to the database only after `enable` succeeds.
 
 `POST /api/v1/auth/2fa/enable`
 
-Body:
-- `code` (string)
-
-Rules:
-- rate-limited
-- verifies `code` against the **pending secret**
-- on success:
-  - stores `twofa_secret` in DB
-  - sets `twofa_enabled = true`
-  - clears pending secret from cache
+- Verifies code against **pending secret**
+- Commits secret to DB
+- Does **not** revoke sessions
 
 ---
 
@@ -52,15 +53,9 @@ Rules:
 
 `POST /api/v1/auth/2fa/disable`
 
-Body:
-- `code` (string)
-
-Rules:
-- rate-limited
-- verifies `code` against secret stored in DB
-- on success:
-  - sets `twofa_enabled = false`
-  - clears `twofa_secret`
+- Verifies code against DB secret
+- Clears secret
+- Forces fresh enrollment next time
 
 ---
 
@@ -68,22 +63,24 @@ Rules:
 
 `POST /api/v1/auth/2fa/verify`
 
-Body:
-- `code` (string)
+Used to prove 2FA for sensitive actions.
 
-This endpoint is used to prove 2FA for sensitive operations.
-It does not issue a token.
-
-On success:
-- returns `success: true`
-- updates `twofa_last_verified_at` (if available)
+- Does not issue token
+- Updates `twofa_last_verified_at`
 
 ---
 
-## Login with 2FA enabled
+## Login with 2FA
 
-When 2FA is enabled for a user:
+1. `/auth/login` → challenge
+2. `/auth/2fa/verify-login`
+3. Token issued after verification
 
-1) `POST /api/v1/auth/login` returns a `challenge_id` (no token)  
-2) client calls `POST /api/v1/auth/2fa/verify-login`  
-3) token is returned only after TOTP verification
+---
+
+## Security constraints
+
+- Rate-limited enable/disable
+- Max attempts enforced
+- TOTP tolerance ±1 interval
+- Challenge bound to IP + User-Agent
