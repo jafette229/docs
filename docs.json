@@ -11,7 +11,7 @@
   "navigation": {
     "tabs": [
       {
-        "tab": "Start",
+        "tab": "Get started",
         "groups": [
           {
             "group": "Overview",
@@ -19,12 +19,7 @@
               "index",
               "introduction"
             ]
-          }
-        ]
-      },
-      {
-        "tab": "Auth",
-        "groups": [
+          },
           {
             "group": "Authentication",
             "pages": [
@@ -32,23 +27,13 @@
               "auth/login",
               "auth/2fa"
             ]
-          }
-        ]
-      },
-      {
-        "tab": "Errors",
-        "groups": [
+          },
           {
             "group": "Errors",
             "pages": [
               "errors/index"
             ]
-          }
-        ]
-      },
-      {
-        "tab": "Localization",
-        "groups": [
+          },
           {
             "group": "Localization",
             "pages": [
@@ -61,7 +46,7 @@
         "tab": "API reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "API",
             "pages": [
               "api-reference/introduction"
             ]
