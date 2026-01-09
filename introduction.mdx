@@ -2,73 +2,232 @@
 title: Introduction
 ---
 
-# Platform Introduction
+# Flowxi Platform — Technical Introduction
 
-This page introduces the **Flowxi backend platform** from a technical and architectural perspective.
+This documentation describes the **Flowxi backend platform** from a **purely technical and architectural standpoint**.
 
-Flowxi is a **private, internal backend** designed to power Flowxi products.
-It exposes a set of controlled APIs used by frontend applications and internal systems.
+Flowxi is a **private, internal backend** built to power Flowxi-owned products and services.
+It is **not a public API platform** and is not intended for third-party integrations without explicit authorization.
 
-This documentation focuses on **how the platform is structured**, not on marketing or sales.
+The goal of this documentation is to explain **how the platform behaves**, **why certain decisions were made**, and **how frontend applications must interact with it safely and correctly**.
 
 ---
 
-## Scope of the platform
+## What Flowxi is (and is not)
 
-Flowxi is responsible for:
+### What Flowxi **is**
 
-- User identity and access control
-- Secure authentication and session management
-- Wallet and balance infrastructure
-- Financial operations and transfers
-- Compliance and verification workflows
-- Localization of all user-facing responses
+Flowxi is:
 
-Anything outside this scope is handled by external systems or frontend applications.
+- A **stateful backend platform** for fintech products
+- A **security-first API system**
+- A **single source of truth** for users, sessions, and financial state
+- A **localization-aware** system by default
+- A backend designed for **deterministic behavior** and auditability
+
+### What Flowxi **is not**
+
+Flowxi is **not**:
+
+- A generic SaaS API
+- A public developer platform
+- A loosely consistent microservice mesh
+- A frontend-driven backend (BFF-only logic is avoided)
+
+---
+
+## Platform responsibilities
+
+Flowxi is responsible for all **critical backend concerns**, including:
+
+### Identity & access
+
+- User lifecycle management
+- Authentication and authorization
+- Session and device management
+- Two-factor authentication (TOTP)
+- Anti-enumeration and rate limiting
+
+### Financial core
+
+- Wallet ownership and balances
+- Transaction recording
+- Internal ledger consistency
+- Idempotent financial operations
+
+### Compliance & state management
+
+- KYC and verification workflows
+- Regulatory state transitions
+- Blocking, suspension, and account closure logic
+- Explicit, traceable user states
+
+### Communication & localization
+
+- Transactional emails
+- Security notifications
+- Fully localized API responses
+- Deterministic fallback behavior
+
+Anything **UI-related**, **presentation-specific**, or **business-orchestration-heavy** is intentionally left to frontend or product layers.
 
 ---
 
 ## Core design principles
 
-Flowxi follows a small set of strict principles:
+Flowxi follows a small number of **non-negotiable principles**.
 
-- **Security first**  
-  Every action is authenticated, authorized, and audited.
-- **API-first**  
-  All features are exposed through versioned HTTP APIs.
-- **State-driven logic**  
-  Users, wallets, and compliance rely on explicit states.
-- **Deterministic behavior**  
-  Same input, same output. No hidden side effects.
-- **Localization by default**  
-  Errors and messages are returned in the user language  
-  (FR by default, EN fallback).
+### 1. Security first (always)
+
+Security is not an afterthought:
+
+- All sensitive endpoints are authenticated
+- Public endpoints are rate-limited
+- Authentication flows are anti-enumeration by design
+- 2FA secrets are never exposed after enrollment
+- Tokens are scoped per device
+- Critical actions are auditable
+
+No endpoint assumes “good behavior” from the client.
+
+---
+
+### 2. API-first, not UI-first
+
+Every capability exists as an API:
+
+- Frontends consume the same APIs as internal tools
+- No hidden server-side flows
+- No session magic or implicit state
+- All behavior is explicit and documented
+
+If something exists, it has an endpoint.
+
+---
+
+### 3. State-driven logic
+
+Flowxi avoids implicit behavior.
+
+Users, wallets, and processes rely on **explicit states**, such as:
+
+- `pending`
+- `active`
+- `blocked`
+- `closed`
+
+State transitions are:
+
+- Controlled
+- Validated
+- Logged
+- Predictable
+
+There are no “soft” or inferred states.
+
+---
+
+### 4. Deterministic behavior
+
+Given the same input:
+
+- The API returns the same structure
+- The same error code
+- The same HTTP status
+
+No endpoint relies on timing assumptions or client-side guesses.
+
+Frontend logic must always rely on:
+- `code` fields (machine-readable)
+- not `message` strings (human-readable)
+
+---
+
+### 5. Localization by default
+
+Localization is **not optional** in Flowxi.
+
+Every request resolves a locale using a strict order:
+
+1. `X-App-Locale`
+2. `Accept-Language`
+3. `user.locale` (authenticated)
+4. fallback (`fr`)
+
+This locale applies to:
+
+- API response messages
+- Validation errors
+- Authentication errors
+- Emails sent during the request
+
+There is **no mixed-language state**.
 
 ---
 
 ## High-level architecture
 
-At a high level, the platform is composed of the following layers:
+At a high level, Flowxi is structured around **clear responsibility layers**:
 
-1. **Authentication & access control**  
-   Tokens, sessions, 2FA, rate limiting.
-2. **User & identity management**  
-   User lifecycle, roles, and statuses.
-3. **Wallet & financial core**  
-   Balances, transactions, and movements.
-4. **Compliance layer**  
-   KYC, document validation, regulatory states.
-5. **Communication & localization**  
-   Emails, notifications, and translated responses.
+1. **Authentication & security**
+   - Login, registration
+   - Sessions and devices
+   - 2FA and step-up verification
 
-Each layer is documented in its own section.
+2. **User & identity**
+   - User records
+   - Status and lifecycle
+   - Preferences and locale
+
+3. **Financial core**
+   - Wallets
+   - Balances
+   - Transactions and movements
+
+4. **Compliance**
+   - KYC workflows
+   - Regulatory constraints
+   - Blocking and escalation
+
+5. **Communication & localization**
+   - Emails
+   - Notifications
+   - Translations and fallback
+
+Each layer is documented independently but designed to work as a coherent whole.
 
 ---
 
-## How to navigate this documentation
+## How to read this documentation
 
-- Start with **Authentication & security** to understand access rules
-- Use **API reference** for endpoint-level details
-- Refer to **Errors & localization** to handle failures correctly
+This documentation is **not linear**.
 
-This documentation assumes familiarity with REST APIs and frontend-backend integration.
+Recommended reading order:
+
+1. **Authentication overview**  
+   Understand access rules, tokens, and sessions.
+2. **Login & 2FA**  
+   Learn how secure authentication actually works.
+3. **Errors**  
+   Learn how to handle failures correctly.
+4. **Localization**  
+   Understand how messages and emails are localized.
+5. **API reference**  
+   Use for exact request/response formats.
+
+This documentation assumes:
+- Familiarity with REST APIs
+- Experience with frontend-backend integration
+- Basic security awareness (tokens, headers, rate limits)
+
+---
+
+## Final note
+
+Flowxi favors **clarity over convenience**.
+
+If something feels strict, verbose, or explicit, it is intentional.
+The platform is designed for **financial-grade correctness**, not shortcuts.
+
+Every decision documented here exists to reduce ambiguity,
+increase security, and ensure predictable behavior at scale.
