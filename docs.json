@@ -22,10 +22,10 @@
           { "group": "Localization", "pages": ["localization/index"] }
         ]
       },
-      {
-        "tab": "API reference",
-        "groups": [{ "group": "API", "pages": ["api-reference/introduction"] }]
-      }
+{
+  "tab": "API reference",
+  "groups": [{ "group": "API", "pages": ["api-reference/index"] }]
+}
     ]
   },
   "logo": {
