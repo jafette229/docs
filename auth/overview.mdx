@@ -4,128 +4,86 @@ title: Authentication overview
 
 # Authentication overview
 
-Flowxi uses **Laravel Sanctum** personal access tokens (Bearer tokens) to authenticate API requests.
+Flowxi uses **Laravel Sanctum** personal access tokens (`Bearer`) for authentication.
 
-A successful authentication returns:
-
-- `access_token` (string)
-- `token_type` = `Bearer`
-
-All protected routes require:
-
-- `Authorization: Bearer <access_token>`
+Authentication is designed for:
+- strict anti-enumeration
+- device-level sessions
+- optional 2FA with step-up verification
 
 ---
 
-## Localization (all auth endpoints)
+## Tokens
 
-Locale is resolved in this order:
+Successful authentication returns:
 
-1. `X-App-Locale` (preferred)
-2. `Accept-Language`
-3. `user.locale` (authenticated requests)
-4. fallback: `fr`
+- `access_token`
+- `token_type: Bearer`
 
-The effective locale is applied to:
-- API messages (`message`)
-- validation responses
-- emails sent by the backend
+All protected endpoints require:
 
----
-
-## Available authentication flows
-
-Flowxi provides **two registration flows**:
-
-- **Magic link registration**
-- **Email code (OTP) registration**
-
-And a standard login flow:
-- **Email + password**
-- optional **2FA challenge** (TOTP)
+```http
+Authorization: Bearer <access_token>
+```
 
 ---
 
-## Registration: Magic link
+## Supported authentication flows
 
-### 1) Send magic link
-`POST /api/v1/auth/register-email`
+### Registration
 
-Creates a `pending` user if needed, then emails a magic link.
+- Magic link (email + password setup)
+- Email code (OTP) + password
 
-### 2) Resend magic link
-`POST /api/v1/register-email/resend`
+### Login
 
-Only valid for `pending` users.
-
-### 3) Set password + activate
-`POST /api/v1/auth/register/set-password`
-
-Validates the token (unused + not expired), sets password, marks the account `active`,
-and returns a Sanctum token.
+- Email + password
+- Optional TOTP-based 2FA challenge
 
 ---
 
-## Registration: Email code (OTP)
+## Device-based sessions
 
-### 1) Send code
-`POST /api/v1/register-email-code/send`
+Flowxi enforces:
 
-Generates a 6-digit code and stores only a **hashed version** in DB.
-
-### 2) Verify code
-`POST /api/v1/register-email-code/verify`
-
-Checks the code validity (not expired + hash match).
-
-### 3) Set password + activate
-`POST /api/v1/register-email-code/set-password`
-
-Transaction + row locks, activates the account and returns a Sanctum token.
+- **1 token per `device_id`**
+- New login on same device **revokes previous token**
+- Other devices remain active
 
 ---
 
-## Login flow
+## High-level login flow
 
-### 1) Login
-`POST /api/v1/auth/login`
-
-Security rules:
-- **anti-enumeration**: unknown email, wrong password, or non-active account all return the same 401 error
-- rate-limited per `email + ip`
-
-If 2FA is enabled:
-- returns `challenge_id`
-- does **not** return a token
-
-If 2FA is not enabled:
-- returns a token
-- enforces **1 token per device_id** (old token for this device is revoked)
-
-### 2) Verify login 2FA (if required)
-`POST /api/v1/auth/2fa/verify-login`
-
-Validates the TOTP code and issues the final token.
+1. Client calls `/auth/login`
+2. If 2FA disabled → token issued
+3. If 2FA enabled → challenge returned
+4. Client verifies via `/auth/2fa/verify-login`
+5. Token issued after successful TOTP
 
 ---
 
-## Devices & sessions (protected)
+## Security guarantees
 
-Protected endpoints (require Bearer token):
-
-- `POST /api/v1/auth/logout`
-- `POST /api/v1/auth/logout-device`
-- `GET /api/v1/auth/devices`
+- Strict anti-enumeration
+- Rate-limited auth attempts
+- MFA challenges bound to IP + User-Agent
+- Hard challenge expiration (no extension)
+- Localization applied before any response
 
 ---
 
-## 2FA management (protected)
+## Protected session endpoints
 
-Protected endpoints:
+- `POST /auth/logout`
+- `POST /auth/logout-device`
+- `GET /auth/devices`
 
-- `GET /api/v1/auth/2fa/status`
-- `POST /api/v1/auth/2fa/enable`
-- `POST /api/v1/auth/2fa/disable`
-- `POST /api/v1/auth/2fa/verify`
+---
 
-Enrollment uses a **pending secret stored in cache**, committed to DB only after successful enable.
+## 2FA management
+
+- Enrollment via pending secret (cache only)
+- Secret committed to DB only after verification
+- No forced logout on enable/disable
+- Step-up verification supported
+
