@@ -1,2631 +1,82 @@
-openapi: 3.0.0
+openapi: 3.0.3
 info:
-  title: 'Flowxi API'
+  title: Flowxi API Documentation
   version: 1.0.0
+
 servers:
-  -
-    url: 'https://api.flowxi.app'
-paths:
-  /api/v1/auth/forgot-password:
-    post:
-      tags:
-        - Auth
-      summary: 'Forgot password (send reset link)'
-      description: "Sends a password reset magic link **if the account exists and is active**.\n\nAnti-enumeration behavior:\n- Always returns **200 OK** if rate-limit is not exceeded\n- Does NOT reveal whether the email exists or not\n- Invalid / inactive users receive the same response"
-      operationId: postApiV1AuthForgotPassword
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              required:
-                - email
-              properties:
-                email:
-                  type: string
-                  format: email
-                  example: user@example.com
-              type: object
-      responses:
-        200:
-          description: 'Reset link sent (anti-enumeration safe)'
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiOkBase'
-              example:
-                code: PASSWORD_RESET_SENT
-                message: 'If an account exists, a reset link has been sent.'
-        429:
-          description: 'Rate limited'
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiError'
-              example:
-                code: RATE_LIMITED
-                message: 'Too many attempts, try again later.'
-        500:
-          description: 'Server error'
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiError'
-              example:
-                code: SERVER_ERROR
-                message: 'Server error.'
-      security: []
-  /api/v1/auth/login:
-    post:
-      tags:
-        - Auth
-      summary: 'Login (password) + optional 2FA challenge'
-      description: 'If 2FA is enabled, returns a challenge (no token). Otherwise returns a Sanctum Bearer token. Anti-enumeration: invalid credentials always return the same error.'
-      operationId: authLogin
-      parameters:
-        -
-          name: X-App-Locale
-          in: header
-          description: 'Optional locale (e.g., fr, en).'
-          required: false
-          schema:
-            type: string
-            maxLength: 10
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              required:
-                - email
-                - password
-                - device_id
-                - device_type
-                - device_name
-              properties:
-                email:
-                  type: string
-                  format: email
-                  example: jane@flowxi.app
-                password:
-                  type: string
-                  format: password
-                  example: '********'
-                device_id:
-                  type: string
-                  maxLength: 100
-                  example: 'ios:ABCDEF-123456'
-                device_type:
-                  type: string
-                  maxLength: 50
-                  example: ios
-                device_name:
-                  type: string
-                  maxLength: 80
-                  example: 'iPhone 15 Pro'
-                country:
-                  type: string
-                  maxLength: 2
-                  example: FR
-                  nullable: true
-              type: object
-      responses:
-        200:
-          description: 'OK (either token issued or MFA challenge returned)'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  code:
-                    type: string
-                    example: LOGIN_SUCCESS
-                  message:
-                    type: string
-                    example: 'Login successful.'
-                  data:
-                    oneOf:
-                      -
-                        required:
-                          - mfa_required
-                          - access_token
-                          - token_type
-                          - account_status
-                          - user_id
-                        properties:
-                          mfa_required:
-                            type: boolean
-                            example: false
-                          access_token:
-                            type: string
-                            example: 1|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-                          token_type:
-                            type: string
-                            example: Bearer
-                          account_status:
-                            type: string
-                            example: active
-                          user_id:
-                            type: integer
-                            example: 123
-                        type: object
-                      -
-                        required:
-                          - mfa_required
-                          - challenge_id
-                          - otp_type
-                          - expires_in
-                        properties:
-                          mfa_required:
-                            type: boolean
-                            example: true
-                          challenge_id:
-                            type: string
-                            format: uuid
-                            example: 7f7a3c2c-7e54-4d2b-9e0a-7f4b8f2b41b2
-                          otp_type:
-                            type: string
-                            example: totp
-                          expires_in:
-                            type: integer
-                            example: 300
-                        type: object
-                type: object
-        401:
-          description: 'Invalid credentials (anti-enumeration)'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: INVALID_CREDENTIALS
-                  message:
-                    type: string
-                    example: 'Invalid credentials.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-        429:
-          description: 'Rate limited'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: RATE_LIMITED
-                  message:
-                    type: string
-                    example: 'Too many requests. Please retry later.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-        500:
-          description: 'Server error'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: SERVER_ERROR
-                  message:
-                    type: string
-                    example: 'Server error.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-  /api/v1/auth/2fa/verify-login:
-    post:
-      tags:
-        - Auth
-      summary: 'Verify login 2FA (TOTP) and issue token'
-      description: 'Validates the TOTP code for an existing login challenge, then issues a Sanctum Bearer token (1 token per device_id).'
-      operationId: authVerifyLogin2FA
-      parameters:
-        -
-          name: X-App-Locale
-          in: header
-          description: 'Optional locale (e.g., fr, en).'
-          required: false
-          schema:
-            type: string
-            maxLength: 10
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              required:
-                - challenge_id
-                - code
-              properties:
-                challenge_id:
-                  type: string
-                  format: uuid
-                  example: 7f7a3c2c-7e54-4d2b-9e0a-7f4b8f2b41b2
-                code:
-                  type: string
-                  example: '123456'
-              type: object
-      responses:
-        200:
-          description: 'OK (token issued)'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  code:
-                    type: string
-                    example: LOGIN_SUCCESS
-                  message:
-                    type: string
-                    example: 'Login successful.'
-                  data:
-                    required:
-                      - access_token
-                      - token_type
-                      - account_status
-                      - user_id
-                    properties:
-                      access_token:
-                        type: string
-                        example: 1|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-                      token_type:
-                        type: string
-                        example: Bearer
-                      account_status:
-                        type: string
-                        example: active
-                      user_id:
-                        type: integer
-                        example: 123
-                    type: object
-                type: object
-        400:
-          description: 'Challenge invalid'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: MFA_CHALLENGE_INVALID
-                  message:
-                    type: string
-                    example: 'Invalid 2FA challenge.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-        403:
-          description: 'Invalid TOTP code'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: MFA_CODE_INVALID
-                  message:
-                    type: string
-                    example: 'Invalid 2FA code.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-        410:
-          description: 'Challenge expired / gone'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: MFA_CHALLENGE_GONE
-                  message:
-                    type: string
-                    example: '2FA challenge expired.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-        429:
-          description: 'Too many attempts'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: MFA_TOO_MANY_ATTEMPTS
-                  message:
-                    type: string
-                    example: 'Too many attempts.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-        500:
-          description: 'Server error'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: SERVER_ERROR
-                  message:
-                    type: string
-                    example: 'Server error.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-  /api/v1/auth/logout:
-    post:
-      tags:
-        - Auth
-      summary: 'Logout current session'
-      description: "POST /api/v1/auth/logout\nSupprime le token courant."
-      operationId: authLogout
-      parameters:
-        -
-          name: X-App-Locale
-          in: header
-          description: 'Optional locale (e.g., fr, en).'
-          required: false
-          schema:
-            type: string
-            maxLength: 10
-      responses:
-        200:
-          description: OK
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  code:
-                    type: string
-                    example: LOGOUT_SUCCESS
-                  message:
-                    type: string
-                    example: 'Logged out.'
-                  data:
-                    type: object
-                    example: []
-                type: object
-        401:
-          description: Unauthenticated
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: UNAUTHENTICATED
-                  message:
-                    type: string
-                    example: Unauthenticated.
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-      security:
-        -
-          bearerAuth: []
-  /api/v1/auth/logout-device:
-    post:
-      tags:
-        - Auth
-      summary: 'Logout a specific device session'
-      description: "POST /api/v1/auth/logout-device\nDéconnecte un device_id spécifique."
-      operationId: authLogoutDevice
-      parameters:
-        -
-          name: X-App-Locale
-          in: header
-          description: 'Optional locale (e.g., fr, en).'
-          required: false
-          schema:
-            type: string
-            maxLength: 10
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              required:
-                - device_id
-              properties:
-                device_id:
-                  type: string
-                  maxLength: 100
-                  example: 'ios:ABCDEF-123456'
-              type: object
-      responses:
-        200:
-          description: OK
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  code:
-                    type: string
-                    example: LOGOUT_SUCCESS
-                  message:
-                    type: string
-                    example: 'Logged out.'
-                  data:
-                    type: object
-                    example: []
-                type: object
-        401:
-          description: Unauthenticated
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: UNAUTHENTICATED
-                  message:
-                    type: string
-                    example: Unauthenticated.
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-        404:
-          description: 'Device not found'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: DEVICE_NOT_FOUND
-                  message:
-                    type: string
-                    example: 'Device not found.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-      security:
-        -
-          bearerAuth: []
-  /api/v1/auth/logout-others:
-    post:
-      tags:
-        - Auth
-      summary: 'Logout all other sessions'
-      description: 'Revokes all tokens except the current one.'
-      operationId: authLogoutOthers
-      parameters:
-        -
-          name: X-App-Locale
-          in: header
-          description: 'Optional locale (e.g., fr, en).'
-          required: false
-          schema:
-            type: string
-            maxLength: 10
-      responses:
-        200:
-          description: OK
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  code:
-                    type: string
-                    example: LOGOUT_OTHERS_SUCCESS
-                  message:
-                    type: string
-                    example: 'Other sessions revoked.'
-                  data:
-                    properties:
-                      revoked_tokens:
-                        type: integer
-                        example: 3
-                    type: object
-                type: object
-        401:
-          description: Unauthenticated
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: UNAUTHENTICATED
-                  message:
-                    type: string
-                    example: Unauthenticated.
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-      security:
-        -
-          bearerAuth: []
-  /api/v1/auth/devices:
-    get:
-      tags:
-        - Auth
-      summary: 'List active devices (sessions)'
-      description: "GET /api/v1/auth/devices\n- Filtre les tokens \"legacy\" (device_id null)"
-      operationId: authListDevices
-      parameters:
-        -
-          name: X-App-Locale
-          in: header
-          description: 'Optional locale (e.g., fr, en).'
-          required: false
-          schema:
-            type: string
-            maxLength: 10
-      responses:
-        200:
-          description: OK
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  code:
-                    type: string
-                    example: DEVICES_LISTED
-                  message:
-                    type: string
-                    example: 'Devices list.'
-                  data:
-                    properties:
-                      devices:
-                        type: array
-                        items:
-                          required:
-                            - id
-                            - device_id
-                            - is_current
-                          properties:
-                            id:
-                              type: integer
-                              example: 10
-                            device_name:
-                              type: string
-                              example: 'iPhone 15 Pro'
-                              nullable: true
-                            device_type:
-                              type: string
-                              example: ios
-                              nullable: true
-                            device_id:
-                              type: string
-                              example: 'ios:ABCDEF-123456'
-                            ip_address:
-                              type: string
-                              example: 203.0.113.10
-                              nullable: true
-                            user_agent:
-                              type: string
-                              example: 'Mozilla/5.0 ...'
-                              nullable: true
-                            country:
-                              type: string
-                              example: FR
-                              nullable: true
-                            created_at:
-                              type: string
-                              example: '2026-01-11 12:34:56'
-                              nullable: true
-                            last_used_at:
-                              type: string
-                              example: '2026-01-11 13:10:00'
-                              nullable: true
-                            is_current:
-                              type: boolean
-                              example: true
-                          type: object
-                    type: object
-                type: object
-        401:
-          description: Unauthenticated
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: UNAUTHENTICATED
-                  message:
-                    type: string
-                    example: Unauthenticated.
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-      security:
-        -
-          bearerAuth: []
-  /api/v1/auth/register/email-code/send:
-    post:
-      tags:
-        - Auth
-      summary: 'Send registration OTP to email'
-      description: 'Creates a pending user if needed and sends a 6-digit OTP to the email address. Returns 409 if email is already used by an active account.'
-      operationId: authRegisterEmailCodeSend
-      parameters:
-        -
-          name: X-App-Locale
-          in: header
-          description: 'Optional locale (e.g., fr, en).'
-          required: false
-          schema:
-            type: string
-            maxLength: 10
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              required:
-                - email
-              properties:
-                email:
-                  type: string
-                  format: email
-                  example: jane@flowxi.app
-              type: object
-      responses:
-        201:
-          description: 'OTP sent'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  code:
-                    type: string
-                    example: OTP_SENT
-                  message:
-                    type: string
-                    example: 'OTP sent.'
-                  data:
-                    type: object
-                    example: []
-                type: object
-        409:
-          description: 'Email already used (active account exists)'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: EMAIL_ALREADY_USED
-                  message:
-                    type: string
-                    example: 'Email is already used.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-        429:
-          description: 'Rate limited'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: RATE_LIMITED
-                  message:
-                    type: string
-                    example: 'Too many requests. Please retry later.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-        500:
-          description: 'Mail send failed / server error'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: MAIL_SEND_FAILED
-                  message:
-                    type: string
-                    example: 'Unable to send email.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-  /api/v1/auth/register/email-code/resend:
-    post:
-      tags:
-        - Auth
-      summary: 'Resend registration OTP to email'
-      description: "Resends a 6-digit OTP for a pending account. Returns 404 if user doesn't exist, 409 if already active."
-      operationId: authRegisterEmailCodeResend
-      parameters:
-        -
-          name: X-App-Locale
-          in: header
-          description: 'Optional locale (e.g., fr, en).'
-          required: false
-          schema:
-            type: string
-            maxLength: 10
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              required:
-                - email
-              properties:
-                email:
-                  type: string
-                  format: email
-                  example: jane@flowxi.app
-              type: object
-      responses:
-        200:
-          description: 'OTP resent'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  code:
-                    type: string
-                    example: OTP_RESENT
-                  message:
-                    type: string
-                    example: 'OTP resent.'
-                  data:
-                    type: object
-                    example: []
-                type: object
-        404:
-          description: 'User not found'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: USER_NOT_FOUND
-                  message:
-                    type: string
-                    example: 'User not found.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-        409:
-          description: 'Email already active'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: EMAIL_ALREADY_ACTIVE
-                  message:
-                    type: string
-                    example: 'Email already active.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-        429:
-          description: 'Rate limited'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: RATE_LIMITED
-                  message:
-                    type: string
-                    example: 'Too many requests. Please retry later.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-        500:
-          description: 'Mail send failed / server error'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: MAIL_SEND_FAILED
-                  message:
-                    type: string
-                    example: 'Unable to send email.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-  /api/v1/auth/register/email-code/verify:
-    post:
-      tags:
-        - Auth
-      summary: 'Verify registration OTP'
-      description: 'Validates a 6-digit OTP for an email (does not activate the account).'
-      operationId: authRegisterEmailCodeVerify
-      parameters:
-        -
-          name: X-App-Locale
-          in: header
-          description: 'Optional locale (e.g., fr, en).'
-          required: false
-          schema:
-            type: string
-            maxLength: 10
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              required:
-                - email
-                - code
-              properties:
-                email:
-                  type: string
-                  format: email
-                  example: jane@flowxi.app
-                code:
-                  type: string
-                  example: '123456'
-              type: object
-      responses:
-        200:
-          description: 'OTP valid'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  code:
-                    type: string
-                    example: OTP_VALID
-                  message:
-                    type: string
-                    example: 'OTP valid.'
-                  data:
-                    properties:
-                      valid:
-                        type: boolean
-                        example: true
-                    type: object
-                type: object
-        422:
-          description: 'OTP invalid/expired'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: OTP_INVALID
-                  message:
-                    type: string
-                    example: 'OTP invalid.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-        429:
-          description: 'Rate limited'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: RATE_LIMITED
-                  message:
-                    type: string
-                    example: 'Too many requests. Please retry later.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-  /api/v1/auth/register/email-code/set-password:
-    post:
-      tags:
-        - Auth
-      summary: 'Activate account from OTP and set password'
-      description: 'Validates OTP, sets password, activates the user, marks email verified, deletes the OTP entry, and returns a Sanctum Bearer token.'
-      operationId: authRegisterEmailCodeSetPassword
-      parameters:
-        -
-          name: X-App-Locale
-          in: header
-          description: 'Optional locale (e.g., fr, en).'
-          required: false
-          schema:
-            type: string
-            maxLength: 10
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              required:
-                - email
-                - code
-                - password
-              properties:
-                email:
-                  type: string
-                  format: email
-                  example: jane@flowxi.app
-                code:
-                  type: string
-                  example: '123456'
-                password:
-                  type: string
-                  format: password
-                  example: '********'
-              type: object
-      responses:
-        200:
-          description: 'Password set + account activated + token issued'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  code:
-                    type: string
-                    example: PASSWORD_SET_SUCCESS
-                  message:
-                    type: string
-                    example: 'Password set successfully.'
-                  data:
-                    required:
-                      - access_token
-                      - token_type
-                      - user_id
-                      - account_status
-                    properties:
-                      access_token:
-                        type: string
-                        example: 1|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-                      token_type:
-                        type: string
-                        example: Bearer
-                      user_id:
-                        type: integer
-                        example: 123
-                      account_status:
-                        type: string
-                        example: active
-                    type: object
-                type: object
-        403:
-          description: 'OTP invalid'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: OTP_INVALID
-                  message:
-                    type: string
-                    example: 'OTP invalid.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-        429:
-          description: 'Rate limited'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: RATE_LIMITED
-                  message:
-                    type: string
-                    example: 'Too many requests. Please retry later.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-        500:
-          description: 'Server error'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: SERVER_ERROR
-                  message:
-                    type: string
-                    example: 'Server error.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-  /api/v1/auth/register/email:
-    post:
-      tags:
-        - Auth
-      summary: 'Register with email (magic link)'
-      description: 'Creates (or reuses) a pending user and sends a single-use magic link to set password. Returns 409 if email is already used by an active account.'
-      operationId: authRegisterEmailMagicLink
-      parameters:
-        -
-          name: X-App-Locale
-          in: header
-          description: 'Optional locale (e.g., fr, en).'
-          required: false
-          schema:
-            type: string
-            maxLength: 10
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              required:
-                - email
-              properties:
-                email:
-                  type: string
-                  format: email
-                  example: jane@flowxi.app
-              type: object
-      responses:
-        201:
-          description: 'Magic link sent'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  code:
-                    type: string
-                    example: MAGIC_LINK_SENT
-                  message:
-                    type: string
-                    example: 'Magic link sent.'
-                  data:
-                    type: object
-                    example: []
-                type: object
-        409:
-          description: 'Email already used (active account exists)'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: EMAIL_ALREADY_USED
-                  message:
-                    type: string
-                    example: 'Email is already used.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-        422:
-          description: 'Validation error'
-          content:
-            application/json:
-              schema:
-                properties:
-                  message:
-                    type: string
-                    example: 'The email field is required.'
-                  errors:
-                    type: object
-                    example:
-                      email:
-                        - 'The email field is required.'
-                type: object
-        500:
-          description: 'Mail send failed / server error'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: MAIL_SEND_FAILED
-                  message:
-                    type: string
-                    example: 'Unable to send email.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-  /api/v1/auth/register/email/resend:
-    post:
-      tags:
-        - Auth
-      summary: 'Resend register magic link'
-      description: 'Resends a single-use registration magic link to a pending user. Returns 404 if user not found, 409 if already active.'
-      operationId: authResendRegisterMagicLink
-      parameters:
-        -
-          name: X-App-Locale
-          in: header
-          description: 'Optional locale (e.g., fr, en).'
-          required: false
-          schema:
-            type: string
-            maxLength: 10
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              required:
-                - email
-              properties:
-                email:
-                  type: string
-                  format: email
-                  example: jane@flowxi.app
-              type: object
-      responses:
-        200:
-          description: 'Magic link resent'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  code:
-                    type: string
-                    example: MAGIC_LINK_RESENT
-                  message:
-                    type: string
-                    example: 'Magic link resent.'
-                  data:
-                    type: object
-                    example: []
-                type: object
-        404:
-          description: 'User not found'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: USER_NOT_FOUND
-                  message:
-                    type: string
-                    example: 'User not found.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-        409:
-          description: 'Email already active'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: EMAIL_ALREADY_ACTIVE
-                  message:
-                    type: string
-                    example: 'Email already active.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-        422:
-          description: 'Validation error'
-          content:
-            application/json:
-              schema:
-                properties:
-                  message:
-                    type: string
-                    example: 'The email field is required.'
-                  errors:
-                    type: object
-                    example:
-                      email:
-                        - 'The email field is required.'
-                type: object
-        500:
-          description: 'Mail send failed / server error'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: MAIL_SEND_FAILED
-                  message:
-                    type: string
-                    example: 'Unable to send email.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-  /api/v1/auth/password/reset:
-    post:
-      tags:
-        - Auth
-      summary: 'Reset password'
-      description: 'Resets the account password using a single-use reset link token. On success, all sessions are revoked.'
-      operationId: authResetPassword
-      parameters:
-        -
-          name: X-App-Locale
-          in: header
-          description: 'Optional locale (e.g., fr, en).'
-          required: false
-          schema:
-            type: string
-            maxLength: 10
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              required:
-                - email
-                - token
-                - password
-              properties:
-                email:
-                  type: string
-                  format: email
-                  example: jane@flowxi.app
-                token:
-                  type: string
-                  example: b7d3e8f1c1b2...
-                password:
-                  type: string
-                  format: password
-                  example: S3cureP@ssw0rd!
-              type: object
-      responses:
-        200:
-          description: 'Password reset success'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  code:
-                    type: string
-                    example: PASSWORD_RESET_SUCCESS
-                  message:
-                    type: string
-                    example: 'Password reset successfully.'
-                  data:
-                    type: object
-                    example: []
-                type: object
-        403:
-          description: 'Invalid/expired/used token'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: PASSWORD_RESET_INVALID
-                  message:
-                    type: string
-                    example: 'Reset link is invalid or expired.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-        422:
-          description: 'Validation error'
-          content:
-            application/json:
-              schema:
-                properties:
-                  message:
-                    type: string
-                    example: 'The email field is required.'
-                  errors:
-                    type: object
-                    example:
-                      email:
-                        - 'The email field is required.'
-                type: object
-        500:
-          description: 'Server error'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: SERVER_ERROR
-                  message:
-                    type: string
-                    example: 'Server error.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-  /api/v1/auth/register/set-password:
-    post:
-      tags:
-        - Auth
-      summary: 'Set password from magic link'
-      description: 'Sets the password using a valid magic-link token, activates the account, verifies email, and returns an access token.'
-      operationId: authRegisterSetPassword
-      parameters:
-        -
-          name: X-App-Locale
-          in: header
-          description: 'Optional locale (e.g., fr, en).'
-          required: false
-          schema:
-            type: string
-            maxLength: 10
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              required:
-                - email
-                - token
-                - password
-              properties:
-                email:
-                  type: string
-                  format: email
-                  example: jane@flowxi.app
-                token:
-                  type: string
-                  example: b7d3e8f1c1b2...
-                password:
-                  type: string
-                  format: password
-                  example: S3cureP@ssw0rd!
-              type: object
-      responses:
-        200:
-          description: 'Password set + token issued'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  code:
-                    type: string
-                    example: PASSWORD_SET_SUCCESS
-                  message:
-                    type: string
-                    example: 'Password set successfully.'
-                  data:
-                    properties:
-                      access_token:
-                        type: string
-                        example: 1|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-                      token_type:
-                        type: string
-                        example: Bearer
-                      user_id:
-                        type: integer
-                        example: 123
-                      account_status:
-                        type: string
-                        example: active
-                    type: object
-                type: object
-        403:
-          description: 'Invalid/expired/used token OR email mismatch (anti-enum)'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: MAGIC_LINK_INVALID
-                  message:
-                    type: string
-                    example: 'Magic link is invalid or expired.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-        404:
-          description: 'User not found (only possible when token exists but user row is missing)'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: USER_NOT_FOUND
-                  message:
-                    type: string
-                    example: 'User not found.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-        422:
-          description: 'Validation error'
-          content:
-            application/json:
-              schema:
-                properties:
-                  message:
-                    type: string
-                    example: 'The email field is required.'
-                  errors:
-                    type: object
-                    example:
-                      email:
-                        - 'The email field is required.'
-                type: object
-        500:
-          description: 'Server error'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: SERVER_ERROR
-                  message:
-                    type: string
-                    example: 'Server error.'
-                  errors:
-                    type: object
-                    nullable: true
-                type: object
-  /api/v1/auth/2fa/status:
-    get:
-      tags:
-        - 2FA
-      summary: 'Get 2FA status and enrollment secret (if disabled)'
-      description: "GET /api/v1/auth/2fa/status\n\nRègles “prod/banking” :\n- Si 2FA activée : ne renvoie JAMAIS secret ni otpauth_uri\n- Si 2FA désactivée : renvoie secret + otpauth_uri (front peut afficher clé + QR)\n\nEnrôlement :\n- Le secret d'enrôlement est \"pending\" en cache (pas en DB)\n- Commit en DB uniquement après /enable validé"
-      operationId: twofaStatus
-      parameters:
-        -
-          name: X-App-Locale
-          in: header
-          description: 'Optional locale (e.g., fr, en).'
-          required: false
-          schema:
-            type: string
-            maxLength: 10
-      responses:
-        200:
-          description: 'Status returned'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  code:
-                    type: string
-                    example: TWOFA_STATUS
-                  message:
-                    type: string
-                    example: '2FA is enabled.'
-                  data:
-                    properties:
-                      enabled:
-                        type: boolean
-                        example: true
-                      email:
-                        type: string
-                        format: email
-                        example: jane@flowxi.app
-                      secret:
-                        type: string
-                        example: null
-                        nullable: true
-                      otpauth_uri:
-                        type: string
-                        example: null
-                        nullable: true
-                      issuer:
-                        type: string
-                        example: Flowxi
-                      expires_in:
-                        type: integer
-                        example: 600
-                        nullable: true
-                    type: object
-                type: object
-        401:
-          description: Unauthenticated
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: UNAUTHENTICATED
-                  message:
-                    type: string
-                    example: Unauthenticated.
-                type: object
-      security:
-        -
-          bearerAuth: []
-  /api/v1/auth/2fa/enable:
-    post:
-      tags:
-        - 2FA
-      summary: 'Enable 2FA using pending enrollment secret'
-      description: "POST /api/v1/auth/2fa/enable\nBody: { \"code\": \"123456\" }\n\n- Vérifie le code contre le secret pending (cache)\n- Si OK : commit le secret en DB + active 2FA\n- Ne force PAS logout"
-      operationId: twofaEnable
-      parameters:
-        -
-          name: X-App-Locale
-          in: header
-          description: 'Optional locale (e.g., fr, en).'
-          required: false
-          schema:
-            type: string
-            maxLength: 10
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              required:
-                - code
-              properties:
-                code:
-                  description: 'TOTP code'
-                  type: string
-                  example: '123456'
-              type: object
-      responses:
-        200:
-          description: '2FA enabled'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  code:
-                    type: string
-                    example: TWOFA_ENABLED
-                  message:
-                    type: string
-                    example: '2FA enabled.'
-                  data:
-                    properties:
-                      enabled:
-                        type: boolean
-                        example: true
-                    type: object
-                type: object
-        401:
-          description: Unauthenticated
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: UNAUTHENTICATED
-                  message:
-                    type: string
-                    example: Unauthenticated.
-                type: object
-        422:
-          description: 'Already enabled or missing secret or validation error'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: TWOFA_MISSING_SECRET
-                  message:
-                    type: string
-                    example: '2FA enrollment secret is missing.'
-                type: object
-        403:
-          description: 'Invalid code'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: TWOFA_INVALID_CODE
-                  message:
-                    type: string
-                    example: 'Invalid 2FA code.'
-                type: object
-        429:
-          description: 'Rate limited'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: TWOFA_RATE_LIMITED
-                  message:
-                    type: string
-                    example: 'Too many attempts.'
-                type: object
-      security:
-        -
-          bearerAuth: []
-  /api/v1/auth/2fa/disable:
-    post:
-      tags:
-        - 2FA
-      summary: 'Disable 2FA using current TOTP code'
-      description: "POST /api/v1/auth/2fa/disable\nBody: { \"code\": \"123456\" }\n\n- Vérifie le code TOTP (secret en DB, car 2FA active)\n- Désactive + reset secret (force nouvel enrôlement)\n- Ne force PAS logout"
-      operationId: twofaDisable
-      parameters:
-        -
-          name: X-App-Locale
-          in: header
-          description: 'Optional locale (e.g., fr, en).'
-          required: false
-          schema:
-            type: string
-            maxLength: 10
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              required:
-                - code
-              properties:
-                code:
-                  description: 'TOTP code'
-                  type: string
-                  example: '123456'
-              type: object
-      responses:
-        200:
-          description: '2FA disabled'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  code:
-                    type: string
-                    example: TWOFA_DISABLED
-                  message:
-                    type: string
-                    example: '2FA disabled.'
-                  data:
-                    properties:
-                      enabled:
-                        type: boolean
-                        example: false
-                    type: object
-                type: object
-        401:
-          description: Unauthenticated
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: UNAUTHENTICATED
-                  message:
-                    type: string
-                    example: Unauthenticated.
-                type: object
-        422:
-          description: 'Not enabled or missing secret or validation error'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: TWOFA_NOT_ENABLED
-                  message:
-                    type: string
-                    example: '2FA is not enabled.'
-                type: object
-        403:
-          description: 'Invalid code'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: TWOFA_INVALID_CODE
-                  message:
-                    type: string
-                    example: 'Invalid 2FA code.'
-                type: object
-        429:
-          description: 'Rate limited'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: TWOFA_RATE_LIMITED
-                  message:
-                    type: string
-                    example: 'Too many attempts.'
-                type: object
-      security:
-        -
-          bearerAuth: []
-  /api/v1/auth/2fa/verify:
-    post:
-      tags:
-        - 2FA
-      summary: 'Verify 2FA code (step-up)'
-      description: "POST /api/v1/auth/2fa/verify\nBody: { \"code\": \"123456\" }\n\nEndpoint “step-up” : prouver 2FA pour action sensible.\nNe délivre pas de token."
-      operationId: twofaVerify
-      parameters:
-        -
-          name: X-App-Locale
-          in: header
-          description: 'Optional locale (e.g., fr, en).'
-          required: false
-          schema:
-            type: string
-            maxLength: 10
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              required:
-                - code
-              properties:
-                code:
-                  description: 'TOTP code'
-                  type: string
-                  example: '123456'
-              type: object
-      responses:
-        200:
-          description: Verified
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  code:
-                    type: string
-                    example: TWOFA_VERIFIED
-                  message:
-                    type: string
-                    example: '2FA verified.'
-                  data:
-                    properties:
-                      success:
-                        type: boolean
-                        example: true
-                    type: object
-                type: object
-        401:
-          description: Unauthenticated
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: UNAUTHENTICATED
-                  message:
-                    type: string
-                    example: Unauthenticated.
-                type: object
-        422:
-          description: 'Not enabled or missing secret or validation error'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: TWOFA_NOT_ENABLED
-                  message:
-                    type: string
-                    example: '2FA is not enabled.'
-                type: object
-        403:
-          description: 'Invalid code'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: TWOFA_INVALID_CODE
-                  message:
-                    type: string
-                    example: 'Invalid 2FA code.'
-                type: object
-        429:
-          description: 'Rate limited'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: TWOFA_RATE_LIMITED
-                  message:
-                    type: string
-                    example: 'Too many attempts.'
-                type: object
-      security:
-        -
-          bearerAuth: []
-  /api/v1/me:
-    get:
-      tags:
-        - Me
-      summary: 'Get authenticated user profile'
-      description: 'GET /api/v1/me'
-      operationId: meShow
-      parameters:
-        -
-          name: X-App-Locale
-          in: header
-          description: 'Optional locale (e.g., fr, en).'
-          required: false
-          schema:
-            type: string
-            maxLength: 10
-      responses:
-        200:
-          description: 'Profile returned'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  code:
-                    type: string
-                    example: ME_OK
-                  message:
-                    type: string
-                    example: OK
-                  data:
-                    properties:
-                      data:
-                        properties:
-                          id:
-                            type: integer
-                            example: 123
-                          email:
-                            type: string
-                            format: email
-                            example: jane@flowxi.app
-                          status:
-                            type: string
-                            example: active
-                          locale:
-                            type: string
-                            example: fr
-                          username:
-                            type: string
-                            example: flowxi_000123
-                          photo_url:
-                            type: string
-                            example: 'https://...'
-                          first_name:
-                            type: string
-                            example: Jane
-                            nullable: true
-                          last_name:
-                            type: string
-                            example: Doe
-                            nullable: true
-                          birth_date:
-                            type: string
-                            example: '1990-01-01'
-                            nullable: true
-                          country:
-                            type: string
-                            example: BJ
-                            nullable: true
-                          nationality:
-                            type: string
-                            example: BJ
-                            nullable: true
-                          phone_number:
-                            type: string
-                            example: +229XXXXXXXX
-                            nullable: true
-                          twofa_enabled:
-                            type: boolean
-                            example: false
-                          created_at:
-                            type: string
-                            example: '2026-01-01T12:00:00.000000Z'
-                            nullable: true
-                          updated_at:
-                            type: string
-                            example: '2026-01-02T12:00:00.000000Z'
-                            nullable: true
-                        type: object
-                    type: object
-                type: object
-        401:
-          description: Unauthenticated
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: UNAUTHENTICATED
-                  message:
-                    type: string
-                    example: Unauthenticated.
-                type: object
-      security:
-        -
-          bearerAuth: []
-    patch:
-      tags:
-        - Me
-      summary: 'Update authenticated user profile'
-      description: 'PATCH /api/v1/me'
-      operationId: meUpdate
-      parameters:
-        -
-          name: X-App-Locale
-          in: header
-          description: 'Optional locale (e.g., fr, en).'
-          required: false
-          schema:
-            type: string
-            maxLength: 10
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              properties:
-                first_name:
-                  type: string
-                  example: Jane
-                  nullable: true
-                last_name:
-                  type: string
-                  example: Doe
-                  nullable: true
-                birth_date:
-                  type: string
-                  example: '1990-01-01'
-                  nullable: true
-                country:
-                  type: string
-                  example: BJ
-                  nullable: true
-                nationality:
-                  type: string
-                  example: BJ
-                  nullable: true
-                phone_number:
-                  type: string
-                  example: +229XXXXXXXX
-                  nullable: true
-              type: object
-      responses:
-        200:
-          description: 'Profile updated'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  code:
-                    type: string
-                    example: ME_UPDATED
-                  message:
-                    type: string
-                    example: Updated.
-                  data:
-                    properties:
-                      data:
-                        properties:
-                          id:
-                            type: integer
-                            example: 123
-                          first_name:
-                            type: string
-                            example: Jane
-                            nullable: true
-                          last_name:
-                            type: string
-                            example: Doe
-                            nullable: true
-                          birth_date:
-                            type: string
-                            example: '1990-01-01'
-                            nullable: true
-                          country:
-                            type: string
-                            example: BJ
-                            nullable: true
-                          nationality:
-                            type: string
-                            example: BJ
-                            nullable: true
-                          phone_number:
-                            type: string
-                            example: +229XXXXXXXX
-                            nullable: true
-                          updated_at:
-                            type: string
-                            example: '2026-01-02T12:00:00.000000Z'
-                            nullable: true
-                        type: object
-                    type: object
-                type: object
-        401:
-          description: Unauthenticated
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: UNAUTHENTICATED
-                  message:
-                    type: string
-                    example: Unauthenticated.
-                type: object
-        422:
-          description: 'Validation error'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: VALIDATION_FAILED
-                  message:
-                    type: string
-                    example: 'Validation failed.'
-                type: object
-      security:
-        -
-          bearerAuth: []
-  /api/v1/me/photo:
-    post:
-      tags:
-        - Me
-      summary: 'Upload and set profile photo'
-      description: "POST /api/v1/me/photo (multipart/form-data)\n\n- Upload Backblaze (disk s3)\n- Stocke la clé en DB (pas l'URL)\n- Supprime ancienne photo si prefix profile_photos/\n- Durci: mime réel + clé collision-safe + private + metadata"
-      operationId: meUpdatePhoto
-      parameters:
-        -
-          name: X-App-Locale
-          in: header
-          description: 'Optional locale (e.g., fr, en).'
-          required: false
-          schema:
-            type: string
-            maxLength: 10
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              required:
-                - photo
-              properties:
-                photo:
-                  description: 'JPEG, PNG or WEBP'
-                  type: string
-                  format: binary
-              type: object
-      responses:
-        200:
-          description: 'Photo updated'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  code:
-                    type: string
-                    example: ME_PHOTO_UPDATED
-                  message:
-                    type: string
-                    example: 'Photo updated.'
-                  data:
-                    properties:
-                      data:
-                        properties:
-                          photo_url:
-                            type: string
-                            example: 'https://signed-url...'
-                          updated_at:
-                            type: string
-                            example: '2026-01-02T12:00:00.000000Z'
-                            nullable: true
-                        type: object
-                    type: object
-                type: object
-        401:
-          description: Unauthenticated
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: UNAUTHENTICATED
-                  message:
-                    type: string
-                    example: Unauthenticated.
-                type: object
-        422:
-          description: 'Validation error'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: VALIDATION_FAILED
-                  message:
-                    type: string
-                    example: 'Validation failed.'
-                type: object
-        500:
-          description: 'Server error'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: SERVER_ERROR
-                  message:
-                    type: string
-                    example: 'Server error.'
-                type: object
-      security:
-        -
-          bearerAuth: []
-  /api/v1/me/change-password:
-    post:
-      tags:
-        - Me
-      summary: 'Change password (keeps current token, revokes others)'
-      description: "POST /api/v1/me/change-password\n\nBanking pragmatique :\n- on invalide tous les autres tokens\n- on garde le token courant"
-      operationId: meChangePassword
-      parameters:
-        -
-          name: X-App-Locale
-          in: header
-          description: 'Optional locale (e.g., fr, en).'
-          required: false
-          schema:
-            type: string
-            maxLength: 10
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              required:
-                - current_password
-                - password
-                - password_confirmation
-              properties:
-                current_password:
-                  type: string
-                  example: OldPassword123!
-                password:
-                  type: string
-                  example: NewPassword123!
-                password_confirmation:
-                  type: string
-                  example: NewPassword123!
-              type: object
-      responses:
-        200:
-          description: 'Password changed'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  code:
-                    type: string
-                    example: PASSWORD_CHANGED
-                  message:
-                    type: string
-                    example: 'Password changed.'
-                  data:
-                    type: object
-                    example: []
-                type: object
-        401:
-          description: Unauthenticated
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: UNAUTHENTICATED
-                  message:
-                    type: string
-                    example: Unauthenticated.
-                type: object
-        403:
-          description: 'Current password invalid'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: PASSWORD_INVALID_CURRENT
-                  message:
-                    type: string
-                    example: 'Invalid current password.'
-                type: object
-        422:
-          description: 'Validation error'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: VALIDATION_FAILED
-                  message:
-                    type: string
-                    example: 'Validation failed.'
-                type: object
-        500:
-          description: 'Server error'
-          content:
-            application/json:
-              schema:
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: SERVER_ERROR
-                  message:
-                    type: string
-                    example: 'Server error.'
-                type: object
-      security:
-        -
-          bearerAuth: []
-  /api/v1/health:
-    get:
-      tags:
-        - Health
-      summary: Health
-      description: 'Healthcheck endpoint.'
-      operationId: getApiV1Health
-      responses:
-        200:
-          description: OK
-          content:
-            application/json:
-              schema:
-                properties:
-                  status:
-                    type: string
-                    example: ok
-                  ts:
-                    type: string
-                    example: '2026-01-09T10:26:05.213928Z'
-                  app_locale:
-                    type: string
-                    example: fr
-                  effective_locale:
-                    type: string
-                    example: fr
-                type: object
-      security: []
+  - url: https://api.flowxi.app
+
+tags:
+  - name: Health
+    description: Service healthcheck.
+  - name: Registration
+    description: Registration flows (magic link + email OTP).
+  - name: Auth
+    description: Login and session management.
+  - name: Two-factor authentication
+    description: TOTP 2FA endpoints (login verification + manage 2FA).
+  - name: Devices
+    description: Session/device listing and revocation.
+  - name: Me
+    description: Profile of the authenticated user (Sanctum session).
+
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Sanctum
+
+  parameters:
+    XAppLocale:
+      name: X-App-Locale
+      in: header
+      required: false
+      description: Optional locale override (fallback is fr if missing/invalid).
+      schema:
+        type: string
+        example: fr
+
   schemas:
     ApiError:
-      required:
-        - code
-        - message
+      type: object
+      required: [code, message]
       properties:
         code:
-          description: "=========================\nBase / Errors\n========================="
           type: string
+          description: Machine-readable error code.
           example: UNAUTHENTICATED
         message:
           type: string
+          description: Localized, user-facing message.
           example: Unauthenticated.
-      type: object
+
     ValidationError:
-      required:
-        - code
-        - message
-        - errors
+      type: object
+      required: [code, message, errors]
       properties:
         code:
           type: string
           example: VALIDATION_FAILED
         message:
           type: string
-          example: 'Validation failed.'
+          example: Validation failed.
         errors:
           type: object
           additionalProperties:
-            schema: Schemas
             type: array
             items:
               type: string
-      type: object
-    Schemas:
-      type: array
-      items:
-        type: string
+      example:
+        code: VALIDATION_FAILED
+        message: Validation failed.
+        errors:
+          email:
+            - The email field is required.
+
     ApiOkBase:
-      required:
-        - code
-        - message
+      type: object
+      required: [code, message]
       properties:
         code:
           type: string
@@ -2633,25 +84,105 @@ components:
         message:
           type: string
           example: OK
+
+    HealthResponse:
       type: object
+      required: [status, ts, app_locale, effective_locale]
+      properties:
+        status:
+          type: string
+          example: ok
+        ts:
+          type: string
+          example: "2026-01-09T10:26:05.213928Z"
+        app_locale:
+          type: string
+          example: en
+        effective_locale:
+          type: string
+          example: en
+
+    MagicLinkSentResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiOkBase"
+      example:
+        code: MAGIC_LINK_SENT
+        message: Magic link sent.
+
+    MagicLinkResentResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiOkBase"
+      example:
+        code: MAGIC_LINK_RESENT
+        message: Magic link resent.
+
+    OtpSentResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiOkBase"
+      example:
+        code: OTP_SENT
+        message: OTP sent.
+
+    OtpResentResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiOkBase"
+      example:
+        code: OTP_RESENT
+        message: OTP resent.
+
+    OtpVerifyOkResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiOkBase"
+        - type: object
+          required: [valid]
+          properties:
+            valid:
+              type: boolean
+              example: true
+      example:
+        code: OTP_VALID
+        message: OTP valid.
+        valid: true
+
+    TokenIssuedResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiOkBase"
+        - type: object
+          required: [access_token, token_type, user_id, account_status]
+          properties:
+            access_token:
+              type: string
+              description: Bearer token (plain text). Shown only once.
+              example: "125|XXXXXXXXXXXXXXXXXXXXXXXX"
+            token_type:
+              type: string
+              example: Bearer
+            user_id:
+              type: integer
+              example: 123
+            account_status:
+              type: string
+              example: active
+      example:
+        code: TOKEN_ISSUED
+        message: Token issued.
+        access_token: "125|XXXXXXXXXXXXXXXXXXXXXXXX"
+        token_type: Bearer
+        user_id: 123
+        account_status: active
+
     LoginSuccessResponse:
       allOf:
-        -
-          $ref: '#/components/schemas/ApiOkBase'
-        -
-          required:
-            - mfa_required
-            - access_token
-            - token_type
-            - account_status
-            - user_id
+        - $ref: "#/components/schemas/ApiOkBase"
+        - type: object
+          required: [mfa_required, access_token, token_type, account_status, user_id]
           properties:
             mfa_required:
               type: boolean
               example: false
             access_token:
               type: string
-              example: 125|XXXXXXXXXXXXXXXX
+              example: "125|XXXXXXXXXXXXXXXXXXXXXXXX"
             token_type:
               type: string
               example: Bearer
@@ -2661,17 +192,20 @@ components:
             user_id:
               type: integer
               example: 123
-          type: object
+      example:
+        code: LOGIN_SUCCESS
+        message: Login successful.
+        mfa_required: false
+        access_token: "125|XXXXXXXXXXXXXXXXXXXXXXXX"
+        token_type: Bearer
+        account_status: active
+        user_id: 123
+
     LoginMfaRequiredResponse:
       allOf:
-        -
-          $ref: '#/components/schemas/ApiOkBase'
-        -
-          required:
-            - mfa_required
-            - challenge_id
-            - otp_type
-            - expires_in
+        - $ref: "#/components/schemas/ApiOkBase"
+        - type: object
+          required: [mfa_required, challenge_id, otp_type, expires_in]
           properties:
             mfa_required:
               type: boolean
@@ -2679,61 +213,151 @@ components:
             challenge_id:
               type: string
               format: uuid
+              example: "6ff8f7f6-1eb3-3525-be4a-3932c805afed"
             otp_type:
               type: string
               example: totp
             expires_in:
               type: integer
               example: 300
-          type: object
+      example:
+        code: MFA_REQUIRED
+        message: Two-factor authentication required.
+        mfa_required: true
+        challenge_id: "6ff8f7f6-1eb3-3525-be4a-3932c805afed"
+        otp_type: totp
+        expires_in: 300
+
     DevicesListResponse:
       allOf:
-        -
-          $ref: '#/components/schemas/ApiOkBase'
-        -
-          required:
-            - devices
+        - $ref: "#/components/schemas/ApiOkBase"
+        - type: object
+          required: [devices]
           properties:
             devices:
               type: array
               items:
+                type: object
                 required:
-                  - id
-                  - device_name
-                  - device_type
-                  - device_id
-                  - ip_address
-                  - user_agent
-                  - country
-                  - created_at
-                  - last_used_at
-                  - is_current
+                  [id, device_name, device_type, device_id, ip_address, user_agent, country, created_at, last_used_at, is_current]
                 properties:
                   id:
                     type: integer
+                    example: 999
                   device_name:
                     type: string
+                    example: "Chrome (Mac)"
                   device_type:
                     type: string
+                    example: web
                   device_id:
                     type: string
+                    example: "device-uuid-123"
                   ip_address:
                     type: string
+                    example: "203.0.113.10"
                   user_agent:
                     type: string
+                    example: "Mozilla/5.0 ..."
                   country:
                     type: string
                     nullable: true
+                    example: BJ
                   created_at:
                     type: string
+                    example: "2026-01-09 11:15:00"
                   last_used_at:
                     type: string
                     nullable: true
+                    example: "2026-01-09 11:20:00"
                   is_current:
                     type: boolean
-                type: object
-          type: object
+                    example: true
+      example:
+        code: DEVICES_LISTED
+        message: Devices listed.
+        devices: []
+
+    TwoFaStatusResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiOkBase"
+        - type: object
+          required: [enabled, email, secret, otpauth_uri, issuer]
+          properties:
+            enabled:
+              type: boolean
+              example: false
+            email:
+              type: string
+              format: email
+              example: user@example.com
+            secret:
+              type: string
+              nullable: true
+              example: "BASE32SECRET..."
+            otpauth_uri:
+              type: string
+              nullable: true
+              example: "otpauth://totp/Flowxi:user@example.com?secret=BASE32SECRET&issuer=Flowxi"
+            issuer:
+              type: string
+              example: Flowxi
+            expires_in:
+              type: integer
+              nullable: true
+              example: 600
+
+    TwoFaEnabledResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiOkBase"
+        - type: object
+          required: [enabled]
+          properties:
+            enabled:
+              type: boolean
+              example: true
+      example:
+        code: TWOFA_ENABLED
+        message: 2FA enabled.
+        enabled: true
+
+    TwoFaDisabledResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiOkBase"
+        - type: object
+          required: [enabled]
+          properties:
+            enabled:
+              type: boolean
+              example: false
+      example:
+        code: TWOFA_DISABLED
+        message: 2FA disabled.
+        enabled: false
+
+    TwoFaVerifiedResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiOkBase"
+        - type: object
+          required: [success]
+          properties:
+            success:
+              type: boolean
+              example: true
+      example:
+        code: TWOFA_VERIFIED
+        message: 2FA verified.
+        success: true
+
+    LogoutOkResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiOkBase"
+      example:
+        code: LOGOUT_SUCCESS
+        message: Logged out.
+
     MeProfile:
+      type: object
       required:
         - id
         - email
@@ -2741,23 +365,104 @@ components:
         - locale
         - username
         - photo_url
+        - first_name
+        - last_name
+        - birth_date
+        - country
+        - nationality
+        - phone_number
         - twofa_enabled
         - created_at
         - updated_at
       properties:
         id:
           type: integer
+          example: 17
         email:
           type: string
           format: email
+          example: fandjinoujaf@gmail.com
         status:
           type: string
+          example: active
         locale:
           type: string
+          example: fr
         username:
           type: string
+          example: fx00000017
         photo_url:
           type: string
+          description: Signed Backblaze URL (short TTL) if uploaded, otherwise a stable public avatar URL.
+          example: https://s3.us-west-004.backblazeb2.com/flowxi-storage-prod/profile_photos/....
+        first_name:
+          type: string
+          nullable: true
+          example: Jafette
+        last_name:
+          type: string
+          nullable: true
+          example: Fandjinou
+        birth_date:
+          type: string
+          nullable: true
+          example: "1999-01-01"
+        country:
+          type: string
+          nullable: true
+          description: ISO 3166-1 alpha-2, normalized uppercase.
+          example: BJ
+        nationality:
+          type: string
+          nullable: true
+          description: ISO 3166-1 alpha-3, normalized uppercase.
+          example: BEN
+        phone_number:
+          type: string
+          nullable: true
+          example: "+22900000000"
+        twofa_enabled:
+          type: boolean
+          example: false
+        created_at:
+          type: string
+          example: "2026-01-09T17:08:57.000000Z"
+        updated_at:
+          type: string
+          example: "2026-01-09T17:39:23.000000Z"
+
+    MeGetResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiOkBase"
+        - type: object
+          required: [data]
+          properties:
+            data:
+              $ref: "#/components/schemas/MeProfile"
+      example:
+        code: ME_OK
+        message: OK
+        data:
+          id: 17
+          email: fandjinoujaf@gmail.com
+          status: active
+          locale: fr
+          username: fx00000017
+          photo_url: https://s3.us-west-004.backblazeb2.com/flowxi-storage-prod/profile_photos/....
+          first_name: Jafette
+          last_name: Fandjinou
+          birth_date: "1999-01-01"
+          country: BJ
+          nationality: BEN
+          phone_number: "+22900000000"
+          twofa_enabled: false
+          created_at: "2026-01-09T17:08:57.000000Z"
+          updated_at: "2026-01-09T17:39:23.000000Z"
+
+    MePatchRequest:
+      type: object
+      additionalProperties: false
+      properties:
         first_name:
           type: string
           nullable: true
@@ -2767,82 +472,969 @@ components:
         birth_date:
           type: string
           nullable: true
+          description: YYYY-MM-DD
         country:
           type: string
           nullable: true
+          description: ISO 3166-1 alpha-2, normalized uppercase.
         nationality:
           type: string
           nullable: true
+          description: ISO 3166-1 alpha-3, normalized uppercase.
         phone_number:
           type: string
           nullable: true
-        twofa_enabled:
-          type: boolean
-        created_at:
-          type: string
-        updated_at:
-          type: string
-      type: object
-    MeGetResponse:
+
+    MePatchResponse:
       allOf:
-        -
-          $ref: '#/components/schemas/ApiOkBase'
-        -
-          required:
-            - data
+        - $ref: "#/components/schemas/ApiOkBase"
+        - type: object
+          required: [data]
           properties:
             data:
-              $ref: '#/components/schemas/MeProfile'
-          type: object
+              type: object
+              required:
+                - id
+                - first_name
+                - last_name
+                - birth_date
+                - country
+                - nationality
+                - phone_number
+                - updated_at
+              properties:
+                id:
+                  type: integer
+                  example: 17
+                first_name:
+                  type: string
+                  nullable: true
+                  example: Jafette
+                last_name:
+                  type: string
+                  nullable: true
+                  example: Fandjinou
+                birth_date:
+                  type: string
+                  nullable: true
+                  example: "1999-01-01"
+                country:
+                  type: string
+                  nullable: true
+                  example: BJ
+                nationality:
+                  type: string
+                  nullable: true
+                  example: BEN
+                phone_number:
+                  type: string
+                  nullable: true
+                  example: "+22900000000"
+                updated_at:
+                  type: string
+                  example: "2026-01-09T17:11:56.000000Z"
+      example:
+        code: ME_UPDATED
+        message: Profil mis à jour.
+        data:
+          id: 17
+          first_name: Jafette
+          last_name: Fandjinou
+          birth_date: "1999-01-01"
+          country: BJ
+          nationality: BEN
+          phone_number: "+22900000000"
+          updated_at: "2026-01-09T17:11:56.000000Z"
+
+    MePhotoResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiOkBase"
+        - type: object
+          required: [data]
+          properties:
+            data:
+              type: object
+              required: [photo_url, updated_at]
+              properties:
+                photo_url:
+                  type: string
+                  example: https://s3.us-west-004.backblazeb2.com/flowxi-storage-prod/profile_photos/user_17_....jpg?...
+                updated_at:
+                  type: string
+                  example: "2026-01-09T17:39:23.000000Z"
+      example:
+        code: ME_PHOTO_UPDATED
+        message: Photo de profil mise à jour.
+        data:
+          photo_url: https://s3.us-west-004.backblazeb2.com/flowxi-storage-prod/profile_photos/user_17_....jpg?...
+          updated_at: "2026-01-09T17:39:23.000000Z"
+
   responses:
+    ValidationFailed:
+      description: Validation failed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ValidationError"
+
     Unauthenticated:
       description: Unauthenticated.
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ApiError'
-    ValidationFailed:
-      description: 'Validation failed.'
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ValidationError'
+            $ref: "#/components/schemas/ApiError"
+          example:
+            code: UNAUTHENTICATED
+            message: Unauthenticated.
+
     RateLimited:
-      description: 'Rate limited.'
+      description: Rate limited.
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ApiError'
+            $ref: "#/components/schemas/ApiError"
+          example:
+            code: RATE_LIMITED
+            message: Too many requests.
+
     ServerError:
-      description: 'Server error.'
+      description: Server error.
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ApiError'
-  parameters:
-    XAppLocale:
-      name: X-App-Locale
-      in: header
-      description: 'Optional locale override (fallback is fr if missing/invalid).'
-      required: false
-      schema:
-        type: string
-        example: fr
-  securitySchemes:
-    bearerAuth:
-      type: http
-      bearerFormat: Sanctum
-      scheme: bearer
-tags:
-  -
-    name: Auth
-    description: 'Login and session management.'
-  -
-    name: 2FA
-    description: 'Two-factor authentication (TOTP) enrollment, enable/disable, and verification.'
-  -
-    name: Me
-    description: 'Profile of the authenticated user (Sanctum session).'
-  -
-    name: Health
-    description: 'Service healthcheck.'
+            $ref: "#/components/schemas/ApiError"
+          example:
+            code: SERVER_ERROR
+            message: Server error.
+
+security:
+  - bearerAuth: []
+
+paths:
+  /api/v1/health:
+    get:
+      tags: [Health]
+      operationId: getApiV1Health
+      summary: Health
+      description: Healthcheck endpoint.
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                status: ok
+                ts: "2026-01-09T10:26:05.213928Z"
+                app_locale: en
+                effective_locale: en
+
+  /api/v1/auth/register-email:
+    post:
+      tags: [Registration]
+      operationId: postApiV1AuthRegisterEmail
+      summary: Register (magic link) - send link
+      description: Creates (or reuses) a pending user and sends a single-use magic link email.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: gbailey@example.net
+      responses:
+        "201":
+          description: Magic link sent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MagicLinkSentResponse"
+        "409":
+          description: Email already used (active account).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: EMAIL_ALREADY_USED
+                message: Email already used.
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/v1/auth/register/set-password:
+    post:
+      tags: [Registration]
+      operationId: postApiV1AuthRegisterSetPassword
+      summary: Register (magic link) - set password
+      description: Validates magic link token, sets password, activates account, and issues a token.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, email, password, password_confirmation]
+              properties:
+                token:
+                  type: string
+                  description: Magic link token (sha256 hex => 64 chars).
+                  example: bngzmiyvdljnikhwaykcmyuwpwlvqwrsitcpscqldzsnrwtujwvlxjklqppwqbew
+                email:
+                  type: string
+                  format: email
+                  example: cynthia.fahey@example.net
+                password:
+                  type: string
+                  example: "Str0ngP@ssw0rd!"
+                password_confirmation:
+                  type: string
+                  example: "Str0ngP@ssw0rd!"
+      responses:
+        "200":
+          description: Account activated + token issued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenIssuedResponse"
+        "403":
+          description: Invalid/expired/used magic link (anti-enumeration safe).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: MAGIC_LINK_INVALID
+                message: Invalid or expired magic link.
+        "404":
+          description: User not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: USER_NOT_FOUND
+                message: User not found.
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/v1/register-email/resend:
+    post:
+      tags: [Registration]
+      operationId: postApiV1RegisterEmailResend
+      summary: Register (magic link) - resend link
+      description: Resends a magic link for a pending user. Active users get 409.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: gbailey@example.net
+      responses:
+        "200":
+          description: Magic link resent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MagicLinkResentResponse"
+        "404":
+          description: User not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: USER_NOT_FOUND
+                message: User not found.
+        "409":
+          description: Email already active.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: EMAIL_ALREADY_ACTIVE
+                message: Email already active.
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/v1/register-email-code/send:
+    post:
+      tags: [Registration]
+      operationId: postApiV1RegisterEmailCodeSend
+      summary: Register (email OTP) - send code
+      description: Creates (or reuses) a pending user and sends a 6-digit OTP by email.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: gbailey@example.net
+      responses:
+        "201":
+          description: OTP sent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OtpSentResponse"
+        "409":
+          description: Email already used (active account).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: EMAIL_ALREADY_USED
+                message: Email already used.
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/v1/register-email-code/resend:
+    post:
+      tags: [Registration]
+      operationId: postApiV1RegisterEmailCodeResend
+      summary: Register (email OTP) - resend code
+      description: Resends a 6-digit OTP for a pending user.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: gbailey@example.net
+      responses:
+        "200":
+          description: OTP resent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OtpResentResponse"
+        "404":
+          description: User not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: USER_NOT_FOUND
+                message: User not found.
+        "409":
+          description: Email already active.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: EMAIL_ALREADY_ACTIVE
+                message: Email already active.
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/v1/register-email-code/verify:
+    post:
+      tags: [Registration]
+      operationId: postApiV1RegisterEmailCodeVerify
+      summary: Register (email OTP) - verify code
+      description: Verifies the OTP (hash match + not expired). Does not activate account yet.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, code]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: gbailey@example.net
+                code:
+                  type: string
+                  description: 6-digit code.
+                  example: "123456"
+      responses:
+        "200":
+          description: OTP valid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OtpVerifyOkResponse"
+        "422":
+          description: OTP invalid/expired.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: OTP_INVALID
+                message: OTP invalid.
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/v1/register-email-code/set-password:
+    post:
+      tags: [Registration]
+      operationId: postApiV1RegisterEmailCodeSetPassword
+      summary: Register (email OTP) - set password
+      description: Validates OTP under lock, activates the user, deletes OTP row, and issues a token.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, code, password, password_confirmation]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: gbailey@example.net
+                code:
+                  type: string
+                  description: 6-digit code.
+                  example: "123456"
+                password:
+                  type: string
+                  example: "Str0ngP@ssw0rd!"
+                password_confirmation:
+                  type: string
+                  example: "Str0ngP@ssw0rd!"
+      responses:
+        "200":
+          description: Account activated + token issued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenIssuedResponse"
+        "403":
+          description: OTP invalid (anti-enumeration safe).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: OTP_INVALID
+                message: OTP invalid.
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      operationId: postApiV1AuthLogin
+      summary: Login (email + password)
+      description: >
+        Strict anti-enumeration: unknown email, wrong password, non-active account => INVALID_CREDENTIALS (401).
+        If 2FA enabled: returns a challenge (no token). If 2FA disabled: issues a token (1 token per device_id).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, device_type, device_name, device_id]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: gbailey@example.net
+                password:
+                  type: string
+                  example: "+-0pBNvYgxwmi/#iw"
+                device_type:
+                  type: string
+                  example: web
+                device_name:
+                  type: string
+                  example: "Chrome (Mac)"
+                device_id:
+                  type: string
+                  example: "device-uuid-123"
+                country:
+                  type: string
+                  nullable: true
+                  example: BJ
+      responses:
+        "200":
+          description: Login success (token) OR 2FA challenge returned.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/LoginSuccessResponse"
+                  - $ref: "#/components/schemas/LoginMfaRequiredResponse"
+              examples:
+                login_success:
+                  value:
+                    code: LOGIN_SUCCESS
+                    message: Login successful.
+                    mfa_required: false
+                    access_token: "125|XXXXXXXXXXXXXXXXXXXXXXXX"
+                    token_type: Bearer
+                    account_status: active
+                    user_id: 123
+                mfa_required:
+                  value:
+                    code: MFA_REQUIRED
+                    message: Two-factor authentication required.
+                    mfa_required: true
+                    challenge_id: "6ff8f7f6-1eb3-3525-be4a-3932c805afed"
+                    otp_type: totp
+                    expires_in: 300
+        "401":
+          description: Invalid credentials (anti-enumeration).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: INVALID_CREDENTIALS
+                message: Invalid credentials.
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/v1/auth/2fa/verify-login:
+    post:
+      tags: [Two-factor authentication]
+      operationId: postApiV1Auth2faVerifyLogin
+      summary: Verify login 2FA (step 2)
+      description: >
+        Validates TOTP and issues a token (enforces 1 token/device). Challenge bound to IP + User-Agent + device_id.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [challenge_id, code]
+              properties:
+                challenge_id:
+                  type: string
+                  format: uuid
+                  example: "6ff8f7f6-1eb3-3525-be4a-3932c805afed"
+                code:
+                  type: string
+                  example: "123456"
+      responses:
+        "200":
+          description: Token issued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenIssuedResponse"
+        "400":
+          description: Challenge invalid (binding mismatch / user invalid / missing device_id).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: MFA_CHALLENGE_INVALID
+                message: Invalid challenge.
+        "403":
+          description: Invalid TOTP code.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: MFA_CODE_INVALID
+                message: Invalid 2FA code.
+        "410":
+          description: Challenge expired or missing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: MFA_CHALLENGE_GONE
+                message: Challenge expired.
+        "429":
+          description: Too many attempts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: MFA_TOO_MANY_ATTEMPTS
+                message: Too many attempts.
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      operationId: postApiV1AuthLogout
+      summary: Logout (current session)
+      description: Deletes the current token only.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Logged out.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogoutOkResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+
+  /api/v1/auth/logout-device:
+    post:
+      tags: [Devices]
+      operationId: postApiV1AuthLogoutDevice
+      summary: Logout a specific device
+      description: Revokes the token associated with a device_id.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [device_id]
+              properties:
+                device_id:
+                  type: string
+                  example: "device-uuid-123"
+      responses:
+        "200":
+          description: Device logged out.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogoutOkResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          description: Device not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: DEVICE_NOT_FOUND
+                message: Device not found.
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /api/v1/auth/devices:
+    get:
+      tags: [Devices]
+      operationId: getApiV1AuthDevices
+      summary: List active devices
+      description: Lists active tokens with device metadata (excludes legacy tokens without device_id).
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DevicesListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+
+  /api/v1/auth/2fa/status:
+    get:
+      tags: [Two-factor authentication]
+      operationId: getApiV1Auth2faStatus
+      summary: 2FA status (and enrollment info if disabled)
+      description: >
+        If enabled: never returns secret nor otpauth_uri. If disabled: returns pending secret + otpauth_uri for enrollment (cache, not DB).
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TwoFaStatusResponse"
+              examples:
+                enabled:
+                  value:
+                    code: TWOFA_STATUS
+                    message: 2FA is enabled.
+                    enabled: true
+                    email: user@example.com
+                    secret: null
+                    otpauth_uri: null
+                    issuer: Flowxi
+                disabled:
+                  value:
+                    code: TWOFA_STATUS
+                    message: 2FA is disabled.
+                    enabled: false
+                    email: user@example.com
+                    secret: "BASE32SECRET..."
+                    otpauth_uri: "otpauth://totp/Flowxi:user@example.com?secret=BASE32SECRET&issuer=Flowxi"
+                    issuer: Flowxi
+                    expires_in: 600
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+
+  /api/v1/auth/2fa/enable:
+    post:
+      tags: [Two-factor authentication]
+      operationId: postApiV1Auth2faEnable
+      summary: Enable 2FA
+      description: Verifies code against pending secret (cache), commits secret to DB, enables 2FA.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  example: "123456"
+      responses:
+        "200":
+          description: 2FA enabled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TwoFaEnabledResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: Invalid code.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: TWOFA_INVALID_CODE
+                message: Invalid 2FA code.
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/v1/auth/2fa/disable:
+    post:
+      tags: [Two-factor authentication]
+      operationId: postApiV1Auth2faDisable
+      summary: Disable 2FA
+      description: Verifies code against DB secret, disables 2FA (resets secret).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  example: "123456"
+      responses:
+        "200":
+          description: 2FA disabled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TwoFaDisabledResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: Invalid code.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: TWOFA_INVALID_CODE
+                message: Invalid 2FA code.
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/v1/auth/2fa/verify:
+    post:
+      tags: [Two-factor authentication]
+      operationId: postApiV1Auth2faVerify
+      summary: Step-up verify 2FA
+      description: Proves 2FA for sensitive actions. Does not issue a token.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  example: "123456"
+      responses:
+        "200":
+          description: Verified.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TwoFaVerifiedResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: Invalid code.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: TWOFA_INVALID_CODE
+                message: Invalid 2FA code.
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/v1/me:
+    get:
+      tags: [Me]
+      operationId: getApiV1Me
+      summary: Get current user profile
+      description: Returns the full profile of the authenticated user.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/XAppLocale"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeGetResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+    patch:
+      tags: [Me]
+      operationId: patchApiV1Me
+      summary: Update current user profile
+      description: Updates basic profile fields. `country` and `nationality` are normalized to uppercase.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/XAppLocale"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MePatchRequest"
+            example:
+              first_name: Jafette
+              last_name: Fandjinou
+              birth_date: "1999-01-01"
+              country: BJ
+              nationality: BEN
+              phone_number: "+22900000000"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MePatchResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/v1/me/photo:
+    post:
+      tags: [Me]
+      operationId: postApiV1MePhoto
+      summary: Upload profile photo
+      description: Uploads a profile photo using multipart/form-data (Backblaze B2 S3-compatible). Database stores the object key only.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/XAppLocale"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [photo]
+              properties:
+                photo:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Photo updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MePhotoResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "500":
+          $ref: "#/components/responses/ServerError"
